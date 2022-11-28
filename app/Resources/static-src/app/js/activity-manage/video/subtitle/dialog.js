@@ -59,6 +59,9 @@ class SubtitleDialog {
       this._destroyUploader();
     }
     let uploader = new UploaderSDK({
+      sdkBaseUri: app.cloudSdkBaseUri,
+      disableDataUpload: app.cloudDisableLogReport,
+      disableSentry: app.cloudDisableLogReport,
       initUrl: $elem.data('initUrl'),
       finishUrl: $elem.data('finishUrl'),
       id: this.upload_id,
@@ -86,7 +89,7 @@ class SubtitleDialog {
     uploader.on('file.finish', function (file) {
       $.post($elem.data('subtitleCreateUrl'), {
         'name': file.name,
-        'subtitleId': file.id,
+        'subtitleId': file.fileId,
         'mediaId': mediaId
       }).success(function (data) {
         let convertStatus = {

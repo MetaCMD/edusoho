@@ -2,23 +2,25 @@
 
 namespace Biz;
 
+use AppBundle\Common\ArrayToolkit;
+use Biz\Role\Util\PermissionBuilder;
+use Biz\TestTool\MockedRequest;
 use Biz\UnitTests\DatabaseDataClearer;
+use Biz\User\CurrentUser;
+use Codeages\Biz\Framework\Context\Biz;
 use Codeages\PluginBundle\Event\LazyDispatcher;
 use CustomBundle\Biz\CustomServiceProvider;
 use Mockery;
-use Biz\User\CurrentUser;
-use Biz\Role\Util\PermissionBuilder;
-use Codeages\Biz\Framework\Context\Biz;
+use PHPUnit\Framework\TestCase;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\EventDispatcher\Event;
+use Symfony\Component\Routing\RequestContext;
+use Symfony\Component\Routing\Router;
 use Topxia\Service\Common\ServiceKernel;
-use PHPUnit\Framework\TestCase;
-use Biz\TestTool\MockedRequest;
-use AppBundle\Common\ArrayToolkit;
 
 class BaseTestCase extends TestCase
 {
-    /** @var $appKernel \AppKernel */
+    /** @var \AppKernel */
     protected static $appKernel;
 
     /**
@@ -26,10 +28,10 @@ class BaseTestCase extends TestCase
      */
     protected $biz;
 
-    /** @var $db \Doctrine\DBAL\Connection */
+    /** @var \Doctrine\DBAL\Connection */
     protected static $db;
 
-    /** @var $redis \Redis */
+    /** @var \Redis */
     protected static $redis = null;
 
     public static function setDb($db)
@@ -101,6 +103,17 @@ class BaseTestCase extends TestCase
     protected function initBiz()
     {
         $container = self::$appKernel->getContainer();
+        //所有的generateUrl 都将mock，单元测试要注意
+        $router = $this->getMockBuilder(Router::class)
+            ->disableOriginalConstructor()
+            ->setMethods(['generate', 'supports', 'exists', 'getContext'])
+            ->getMock();
+        $router
+            ->expects($this->atLeast(0))
+            ->method('getContext')
+            ->willReturn(new RequestContext());
+        $container->set('router', $router);
+
         $oldBiz = $container->get('biz');
         $biz = new Biz($container->getParameter('biz_config'));
         self::$appKernel->initializeBiz($biz);
@@ -125,17 +138,22 @@ class BaseTestCase extends TestCase
     {
         $biz = $this->getBiz();
         $biz['db']->rollback();
+        //echo '运行后内存：'.round(memory_get_usage() / 1024 / 1024, 2).'MB', '';
     }
 
     protected function initDevelopSetting()
     {
-        $this->getServiceKernel()->createService('System:SettingService')->set('developer', array(
+        $this->getServiceKernel()->createService('System:SettingService')->set('developer', [
             'without_network' => '1',
-        ));
+        ]);
 
         return $this;
     }
 
+    /**
+     * @return $this
+     *               默认CurrentUser 具有全部权限，并且具有数据库实体用户
+     */
     protected function initCurrentUser()
     {
         /** @var $userService \Biz\User\Service\UserService */
@@ -143,29 +161,29 @@ class BaseTestCase extends TestCase
 
         $currentUser = new CurrentUser();
         //由于创建管理员用户时，当前用户（CurrentUser）必须有管理员权限，所以在register之前先mock一个临时管理员用户作为CurrentUser
-        $currentUser->fromArray(array(
+        $currentUser->fromArray([
             'id' => 0,
             'nickname' => '游客',
             'currentIp' => '127.0.0.1',
-            'roles' => array('ROLE_USER', 'ROLE_ADMIN', 'ROLE_SUPER_ADMIN', 'ROLE_TEACHER'),
-            'org' => array('id' => 1),
-        ));
+            'roles' => ['ROLE_USER', 'ROLE_ADMIN', 'ROLE_SUPER_ADMIN', 'ROLE_TEACHER'],
+            'org' => ['id' => 1, 'orgCode' => '1.'],
+        ]);
 
         $this->getServiceKernel()->setBiz($this->getBiz());
         $this->getServiceKernel()->setCurrentUser($currentUser);
 
-        $user = $userService->register(array(
+        $user = $userService->register([
             'nickname' => 'admin',
             'email' => 'admin@admin.com',
             'password' => 'admin',
             'createdIp' => '127.0.0.1',
             'orgCode' => '1.',
             'orgId' => '1',
-        ));
-        $roles = array('ROLE_USER', 'ROLE_ADMIN', 'ROLE_SUPER_ADMIN', 'ROLE_TEACHER');
+        ]);
+        $roles = ['ROLE_USER', 'ROLE_ADMIN', 'ROLE_SUPER_ADMIN', 'ROLE_TEACHER'];
         $user = $userService->changeUserRoles($user['id'], $roles);
         $user['currentIp'] = $user['createdIp'];
-        $user['org'] = array('id' => 1);
+        $user['org'] = ['id' => 1, 'orgCode' => '1.'];
         $currentUser = new CurrentUser();
         $currentUser->fromArray($user);
         $this->grantPermissionToUser($currentUser);
@@ -177,10 +195,71 @@ class BaseTestCase extends TestCase
         $biz['user'] = $currentUser;
 
         $container = self::$appKernel->getContainer();
+
         $singletonBiz = $container->get('biz');
         $singletonBiz['user'] = $currentUser;
 
         return $this;
+    }
+
+    /**
+     * @param array $customFields
+     *                            载入教师身份的CurrentUser
+     */
+    protected function loadCurrentUserWithTeacher(array $customFields = [])
+    {
+        $customFields = ArrayToolkit::parts($customFields, ['id', 'nickname', 'email', 'password', 'currentIp']);
+        $currentUser = new CurrentUser();
+        $currentUser->fromArray(array_merge([
+            'id' => 2,
+            'nickname' => 'teacher',
+            'email' => 'teacher@teacher.com',
+            'password' => 'teacher',
+            'currentIp' => '127.0.0.1',
+            'roles' => ['ROLE_USER', 'ROLE_TEACHER'],
+        ], $customFields));
+        $currentUser->setPermissions(PermissionBuilder::instance()->getPermissionsByRoles($currentUser->getRoles()));
+        $this->biz['user'] = $currentUser;
+    }
+
+    /**
+     * @param array $customFields
+     *                            载入管理员身份的CurrentUser
+     */
+    protected function loadCurrentUserWithAdmin(array $customFields = [])
+    {
+        $customFields = ArrayToolkit::parts($customFields, ['id', 'nickname', 'email', 'password', 'currentIp']);
+        $currentUser = new CurrentUser();
+        $currentUser->fromArray(array_merge([
+            'id' => 2,
+            'nickname' => 'admin',
+            'email' => 'admin@admin.com',
+            'password' => 'admin',
+            'currentIp' => '127.0.0.1',
+            'roles' => ['ROLE_USER', 'ROLE_ADMIN'],
+        ], $customFields));
+        $currentUser->setPermissions(PermissionBuilder::instance()->getPermissionsByRoles($currentUser->getRoles()));
+        $this->biz['user'] = $currentUser;
+    }
+
+    /**
+     * @param array $customFields
+     *                            载入普通用户身份的CurrentUser
+     */
+    protected function loadCurrentUserWithNormalUser(array $customFields = [])
+    {
+        $customFields = ArrayToolkit::parts($customFields, ['id', 'nickname', 'email', 'password', 'currentIp']);
+        $currentUser = new CurrentUser();
+        $currentUser->fromArray(array_merge([
+            'id' => 2,
+            'nickname' => 'user',
+            'email' => 'user@user.com',
+            'password' => 'user',
+            'currentIp' => '127.0.0.1',
+            'roles' => ['ROLE_USER'],
+        ], $customFields));
+        $currentUser->setPermissions(PermissionBuilder::instance()->getPermissionsByRoles($currentUser->getRoles()));
+        $this->biz['user'] = $currentUser;
     }
 
     /**
@@ -201,7 +280,7 @@ class BaseTestCase extends TestCase
      *          'functionName' => 'tryManageCourse',　//必填
      *          'returnValue' => array('id' => 1),　// 非必填，填了表示有相应的返回结果
      *          'throwException' => new \Exception(), //object Exception or string Exception ，和returnValue 只能二选一，否则throwException优先
-     *          'withParams' => array('param1', array('arrayParamKey1' => '123')),　
+     *          'withParams' => array('param1', array('arrayParamKey1' => '123')),
      *                          //非必填，表示填了相应参数才会有相应返回结果
      *                          //参数必须要用一个数组包含
      *          'runTimes' => 1 //非必填，表示跑第几次会出相应结果, 不填表示无论跑多少此，结果都一样
@@ -210,7 +289,7 @@ class BaseTestCase extends TestCase
      *
      * @return \Mockery\MockInterface
      */
-    protected function mockBiz($alias, $params = array())
+    protected function mockBiz($alias, $params = [])
     {
         $mockedObj = $this->mockObject($alias, $params);
 
@@ -220,7 +299,7 @@ class BaseTestCase extends TestCase
         return $mockedObj;
     }
 
-    protected function mockPureBiz($alias, $params = array())
+    protected function mockPureBiz($alias, $params = [])
     {
         $mockedObj = $this->mockObject($alias, $params);
 
@@ -263,8 +342,10 @@ class BaseTestCase extends TestCase
      * @param $uniqueCols 如果有值，会以指定的列来认为是数组的唯一键，比较时，只比较 唯一键相同的数组
      *   如 array('id'), 比较的数组 中 id 相等的才会进行比较
      *   注意： 目前只支持设置单属性
+     *
+     * @deprecated 断言应该写在具体的测试函数内，不应该抽象，这个函数的弊端是，会导致大量的断言出现，抽样就可
      */
-    protected function assertArrayEquals(array $arr1, array $arr2, array $keyAry = array(), $uniqueCols = array())
+    protected function assertArrayEquals(array $arr1, array $arr2, array $keyAry = [], $uniqueCols = [])
     {
         if (count($keyAry) >= 1) {
             foreach ($keyAry as $key) {
@@ -307,13 +388,14 @@ class BaseTestCase extends TestCase
     {
         $permissions = new \ArrayObject();
         $permissions['admin_course_content_manage'] = true;
+        $permissions['admin_v2_item_bank_exercise_content_manage'] = true;
         /* @var $currentUser CurrentUser */
         $currentUser->setPermissions($permissions);
     }
 
-    protected function mockObject($alias, $params = array())
+    protected function mockObject($alias, $params = [])
     {
-        $splitedChars = array(':', '.');
+        $splitedChars = [':', '.'];
         $className = $alias;
         foreach ($splitedChars as $char) {
             $aliasList = explode($char, $className);
@@ -325,7 +407,7 @@ class BaseTestCase extends TestCase
         foreach ($params as $param) {
             $expectation = $mockObj->shouldReceive($param['functionName']);
 
-            if (!empty($param['runTimes'])) {
+            if (isset($param['runTimes'])) {
                 $expectation = $expectation->times($param['runTimes']);
             }
 
@@ -335,15 +417,15 @@ class BaseTestCase extends TestCase
                 $expectation = $expectation->withAnyArgs();
             }
 
-            if (!empty($param['returnValue'])) {
+            if (isset($param['returnValue'])) {
                 $expectation->andReturn($param['returnValue']);
             }
 
-            if (!empty($param['andReturnValues'])) {
+            if (isset($param['andReturnValues'])) {
                 $expectation->andReturnValues($param['andReturnValues']);
             }
 
-            if (!empty($param['throwException'])) {
+            if (isset($param['throwException'])) {
                 $expectation->andThrow($param['throwException']);
             }
         }
@@ -376,8 +458,8 @@ class TestCaseLazyDispatcher extends LazyDispatcher
             $event = new Event();
         }
 
-        $event->setDispatcher($this);
-        $event->setName($eventName);
+//        $event->setDispatcher($this);
+//        $event->setName($eventName);
 
         $subscribers = $this->container->get('codeags_plugin.event.lazy_subscribers');
 
@@ -393,7 +475,7 @@ class TestCaseLazyDispatcher extends LazyDispatcher
                 $subscriber = $this->container->get($id);
                 $className = get_class($subscriber);
                 $newSubscriber = new $className($this->biz);
-                call_user_func(array($newSubscriber, $method), $event);
+                call_user_func([$newSubscriber, $method], $event);
             }
         }
 

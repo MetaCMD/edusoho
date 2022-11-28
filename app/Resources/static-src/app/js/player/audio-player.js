@@ -1,4 +1,7 @@
 import Emitter from 'component-emitter';
+import postal from 'postal';
+import 'postal.federation';
+import 'postal.xframe';
 class AudioPlayer extends Emitter {
 
   constructor(options) {
@@ -7,6 +10,8 @@ class AudioPlayer extends Emitter {
     this.playMode = 'sequence'; //默认开启
     this.player = {};
     this.setup();
+    this.duration = 0;
+    this.currentTime = 0;
   }
 
   setup() {
@@ -22,22 +27,34 @@ class AudioPlayer extends Emitter {
       });
     }
 
-    if (self.options.statsInfo) {
-      var statsInfo = self.options.statsInfo;
+    if (self.options.resNo) {
       extConfig = Object.assign(extConfig, {
-        statsInfo: {
-          accesskey: statsInfo.accesskey,
-          globalId: statsInfo.globalId,
-          userId: statsInfo.userId,
-          userName: statsInfo.userName
+        resNo: self.options.resNo
+      });
+    }
+
+    if (self.options.token) {
+      extConfig = Object.assign(extConfig, {
+        token: self.options.token
+      });
+    }
+
+    if (self.options.user) {
+      var user = self.options.user;
+      extConfig = Object.assign(extConfig, {
+        user: {
+          accesskey: user.accesskey,
+          globalId: user.globalId,
+          id: user.id,
+          name: user.name
         }
       });
     }
-    
-    const remeberLastPos = self.options.customPos < self.options.mediaLength;
+    const lang = (document.documentElement.lang == 'zh_CN') ? 'zh-CN' : document.documentElement.lang;
+    const rememberLastPos = self.options.customPos < self.options.mediaLength;
 
     //范晓铖要改SDK，消除string和int的奇怪判断
-    if (remeberLastPos && self.options.customPos) {
+    if (rememberLastPos && self.options.customPos) {
       self.options.customPos = self.options.customPos.toString();
     } else if (!self.options.customPos) {
       self.options.customPos = 0;
@@ -48,14 +65,17 @@ class AudioPlayer extends Emitter {
     extConfig = Object.assign(extConfig, {
       id: 'lesson-player',
       playlist: self.options.url,
-      template: self.options.content,
+      audioDocMode: {
+        template: self.options.content,
+        sequentialMode: true,
+      },
       autoplay: true, //音频自动播放开启
-      customPos: self.options.customPos,
+      initPos: self.options.customPos,
       disableModeSelection: self.options.disableModeSelection,
-      remeberLastPos: remeberLastPos,
-      sequentialMode: true,
+      rememberLastPos: rememberLastPos,
+      language: lang
     });
-    var player = new AudioPlayerSDK(extConfig);
+    var player = new QiQiuYun.Player(extConfig);
 
     player.on('ready', function(e) {
       self.emit('ready', e);
@@ -67,6 +87,8 @@ class AudioPlayer extends Emitter {
 
     player.on('timeupdate', function(e) {
       //    player.__events get all the event;
+      self.currentTime = e.currentTime;
+      self.duration = e.duration;
       self.emit('timechange', e);
     });
 
@@ -76,9 +98,10 @@ class AudioPlayer extends Emitter {
 
     player.on('ended', function(e) {
       let message = {
-        'mode' : self.playMode
+        'mode' : self.playMode,
+        'currentTime': self.currentTime,
+        'duration': self.duration,
       };
-      console.log(message);
       self.emit('ended', message);
     });
 
@@ -91,6 +114,7 @@ class AudioPlayer extends Emitter {
     });
 
     this.player = player;
+    this._registerChannel();
   }
 
   play() {
@@ -122,6 +146,31 @@ class AudioPlayer extends Emitter {
     return false;
   }
 
+  _registerChannel() {
+    postal.instanceId('task');
+
+    postal.fedx.addFilter([
+      {
+        channel: 'task-events', //接收 activity iframe的事件
+        topic: 'monitoringEvent',
+        direction: 'in'
+      }
+    ]);
+
+    postal.subscribe({
+      channel: 'task-events',
+      topic: 'monitoringEvent',
+      callback: (type) => {
+        if (type === 'pause') {
+          this.pause();
+        } else if (type === 'play') {
+          this.play();
+        }
+      }
+    });
+
+    return this;
+  }
 }
 
 export default AudioPlayer;

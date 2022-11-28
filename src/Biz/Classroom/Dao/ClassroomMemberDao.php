@@ -2,10 +2,14 @@
 
 namespace Biz\Classroom\Dao;
 
-use Codeages\Biz\Framework\Dao\GeneralDaoInterface;
+use Codeages\Biz\Framework\Dao\AdvancedDaoInterface;
 
-interface ClassroomMemberDao extends GeneralDaoInterface
+interface ClassroomMemberDao extends AdvancedDaoInterface
 {
+    public function searchMembersByClassroomId($classroomId, $conditions, $start, $limit);
+
+    public function countMembersByClassroomId($classroomId, $conditions);
+
     public function countStudents($classroomId);
 
     public function countAuditors($classroomId);
@@ -35,4 +39,8 @@ interface ClassroomMemberDao extends GeneralDaoInterface
     public function findMembersByUserId($userId);
 
     public function searchMemberCountGroupByFields($conditions, $groupBy, $start, $limit);
+
+    public function searchSignStatisticsByClassroomId($classroomId, array $conditions, array $orderBys, $start, $limit);
+
+    public function findDailyIncreaseDataByClassroomIdAndRoleWithTimeRange($classroomId, $role, $startTime, $endTime, $format = '%Y-%m-%d');
 }

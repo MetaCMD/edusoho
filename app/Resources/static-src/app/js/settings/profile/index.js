@@ -34,11 +34,15 @@ $('#user-profile-form').validate({
       maxlength: 24
     },
     'profile[qq]': 'qq',
+    'profile[weixin]': 'weixin',
     'profile[weibo]': 'url',
     'profile[blog]': 'url',
     'profile[site]': 'url',
     'profile[mobile]': 'mobile',
-    'profile[idcard]': 'idcardNumber',
+    'profile[idcard]': {
+      maxlength: 50,
+      only_alphanumeric: true
+    },
     'profile[intField1]': {digits: true, maxlength: 9},
     'profile[intField2]': {digits: true, maxlength: 9},
     'profile[intField3]': {digits: true, maxlength: 9},

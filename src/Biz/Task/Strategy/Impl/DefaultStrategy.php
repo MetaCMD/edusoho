@@ -41,12 +41,12 @@ class DefaultStrategy extends BaseStrategy implements CourseStrategy
         $tasks = $this->getTaskService()->findTasksFetchActivityByCourseId($courseId);
         $items = $this->prepareCourseItems($course['id'], $tasks);
 
-        return array(
-            'data' => array(
+        return [
+            'data' => [
                 'items' => $items,
-            ),
+            ],
             'template' => 'lesson-manage/default-list.html.twig',
-        );
+        ];
     }
 
     public function getTasksJsonData($task)
@@ -56,13 +56,13 @@ class DefaultStrategy extends BaseStrategy implements CourseStrategy
         $lesson = $this->getChapterDao()->get($task['categoryId']);
         $lesson['tasks'] = $tasks;
 
-        return array(
-            'data' => array(
+        return [
+            'data' => [
                 'course' => $course,
                 'lesson' => $lesson,
-            ),
+            ],
             'template' => 'lesson-manage/default/lesson.html.twig',
-        );
+        ];
     }
 
     public function createTask($field)
@@ -86,54 +86,18 @@ class DefaultStrategy extends BaseStrategy implements CourseStrategy
             $this->getCourseService()->updateChapter(
                 $task['courseId'],
                 $task['categoryId'],
-                array('title' => $task['title'])
+                ['title' => $task['title']]
             );
         }
 
         return $task;
     }
 
-    public function deleteTask($task)
-    {
-        if (empty($task)) {
-            return;
-        }
-        try {
-            $this->biz['db']->beginTransaction();
-            $allTasks = array();
-            if ('lesson' == $task['mode']) {
-                $allTasks = $this->getTaskDao()->findByCourseIdAndCategoryId(
-                    $task['courseId'],
-                    $task['categoryId']
-                );
-            } else {
-                array_push($allTasks, $task);
-            }
-            foreach ($allTasks as $_task) {
-                $this->getTaskDao()->delete($_task['id']);
-                $this->getTaskResultService()->deleteUserTaskResultByTaskId($_task['id']);
-                $this->getActivityService()->deleteActivity($_task['activityId']);
-            }
-
-            if ('lesson' == $task['mode']) {
-                $lessonCount = $this->getCourseLessonService()->countLessons(array('id' => $task['categoryId']));
-                if ($lessonCount > 0) {
-                    $this->getCourseLessonService()->deleteLesson($task['courseId'], $task['categoryId']);
-                }
-            }
-
-            $this->biz['db']->commit();
-        } catch (\Exception $e) {
-            $this->biz['db']->rollback();
-            throw $e;
-        }
-    }
-
     protected function validateTaskMode($field)
     {
         if (!empty($field['mode']) && !in_array(
                 $field['mode'],
-                array('preparation', 'lesson', 'exercise', 'homework', 'extraClass')
+                ['preparation', 'lesson', 'exercise', 'homework', 'extraClass']
             )
         ) {
             throw TaskException::ERROR_TASK_MODE();
@@ -147,7 +111,7 @@ class DefaultStrategy extends BaseStrategy implements CourseStrategy
         }
         $tasks = $this->sortTasks($tasks);
 
-        $items = array();
+        $items = [];
         $chapters = $this->getChapterDao()->findChaptersByCourseId($courseId);
         foreach ($chapters as $chapter) {
             $chapter['itemType'] = 'chapter';
@@ -184,13 +148,13 @@ class DefaultStrategy extends BaseStrategy implements CourseStrategy
     protected function sortTasks($tasks)
     {
         $tasks = ArrayToolkit::group($tasks, 'categoryId');
-        $modes = array(
+        $modes = [
             'preparation' => 0,
             'lesson' => 1,
             'exercise' => 2,
             'homework' => 3,
             'extraClass' => 4,
-        );
+        ];
 
         foreach ($tasks as $key => $taskGroups) {
             uasort(
@@ -211,7 +175,7 @@ class DefaultStrategy extends BaseStrategy implements CourseStrategy
     {
         $tasks = $this->getTaskDao()->findByChapterId($task['categoryId']);
         foreach ($tasks as $task) {
-            $this->getTaskDao()->update($task['id'], array('status' => 'published'));
+            $this->getTaskDao()->update($task['id'], ['status' => 'published']);
         }
         $task['status'] = 'published';
 
@@ -221,7 +185,7 @@ class DefaultStrategy extends BaseStrategy implements CourseStrategy
     //取消发布课时中一组任务
     public function unpublishTask($task)
     {
-        return $this->getTaskDao()->update($task['id'], array('status' => 'unpublished'));
+        return $this->getTaskDao()->update($task['id'], ['status' => 'unpublished']);
     }
 
     private function _createLesson($task)
@@ -259,7 +223,7 @@ class DefaultStrategy extends BaseStrategy implements CourseStrategy
 
     protected function getTaskSeq($taskMode, $chapterSeq)
     {
-        $taskModes = array('preparation' => 1, 'lesson' => 2, 'exercise' => 3, 'homework' => 4, 'extraClass' => 5);
+        $taskModes = ['preparation' => 2, 'lesson' => 1, 'exercise' => 3, 'homework' => 4, 'extraClass' => 5];
         if (!array_key_exists($taskMode, $taskModes)) {
             throw TaskException::ERROR_TASK_MODE();
         }

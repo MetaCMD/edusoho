@@ -2,15 +2,15 @@
 
 namespace Biz\OrderFacade\Service\Impl;
 
+use AppBundle\Common\ArrayToolkit;
+use AppBundle\Common\MathToolkit;
 use Biz\BaseService;
 use Biz\Order\OrderException;
-use Biz\OrderFacade\Command\OrderPayCheck\OrderPayChecker;
 use Biz\OrderFacade\Currency;
 use Biz\OrderFacade\Exception\OrderPayCheckException;
 use Biz\OrderFacade\Product\Product;
 use Biz\OrderFacade\Service\OrderFacadeService;
 use Biz\OrderFacade\Service\ProductDealerService;
-use AppBundle\Common\MathToolkit;
 use Biz\System\Service\LogService;
 use Biz\System\Service\SettingService;
 use Biz\User\UserException;
@@ -23,7 +23,7 @@ use Codeages\Biz\Order\Status\Order\SuccessOrderStatus;
 
 class OrderFacadeServiceImpl extends BaseService implements OrderFacadeService
 {
-    private $deductTypeName = array('discount' => '打折', 'coupon' => '优惠券', 'paidCourse' => '班级课程抵扣', 'adjust_price' => '改价');
+    private $deductTypeName = ['discount' => '打折', 'coupon' => '优惠券', 'paidCourse' => '班级课程抵扣', 'adjust_price' => '改价'];
 
     /*
      * 用于处理 商品
@@ -39,14 +39,14 @@ class OrderFacadeServiceImpl extends BaseService implements OrderFacadeService
         $user = $this->biz['user'];
         /* @var $currency Currency */
         $currency = $this->getCurrency();
-        $orderFields = array(
+        $orderFields = [
             'title' => $product->title,
             'user_id' => $user['id'],
             'created_reason' => 'site.join_by_purchase',
             'price_type' => 'CNY',
             'currency_exchange_rate' => $currency->exchangeRate,
             'expired_refund_days' => $this->getRefundDays(),
-        );
+        ];
 
         $orderItems = $this->makeOrderItems($product);
 
@@ -65,12 +65,12 @@ class OrderFacadeServiceImpl extends BaseService implements OrderFacadeService
     public function isOrderPaid($orderId)
     {
         if ($order = $this->getOrderService()->getOrder($orderId)) {
-            return in_array($order['status'], array(
+            return in_array($order['status'], [
                 SuccessOrderStatus::NAME,
                 PaidOrderStatus::NAME,
                 FailOrderStatus::NAME,
                 FinishedOrderStatus::NAME,
-            ));
+            ]);
         } else {
             return false;
         }
@@ -78,8 +78,8 @@ class OrderFacadeServiceImpl extends BaseService implements OrderFacadeService
 
     private function makeOrderItems(Product $product)
     {
-        $orderItem = array(
-            'target_id' => $product->targetId,
+        $orderItem = [
+            'target_id' => in_array($product->targetType, ['course', 'classroom']) ? $product->goodsSpecsId : $product->targetId,
             'target_type' => $product->targetType,
             'price_amount' => $product->originPrice,
             'pay_amount' => $product->getPayablePrice(),
@@ -88,36 +88,36 @@ class OrderFacadeServiceImpl extends BaseService implements OrderFacadeService
             'unit' => $product->unit,
             'create_extra' => $product->getCreateExtra(),
             'snapshot' => $product->getSnapShot(),
-        );
+        ];
 
         $orderItem = MathToolkit::multiply(
             $orderItem,
-            array('price_amount', 'pay_amount'),
+            ['price_amount', 'pay_amount'],
             100
         );
-        $deducts = array();
+        $deducts = [];
 
         foreach ($product->pickedDeducts as $deduct) {
-            $deduct = MathToolkit::multiply($deduct, array('deduct_amount'), 100);
+            $deduct = MathToolkit::multiply($deduct, ['deduct_amount'], 100);
             if (in_array($deduct['deduct_type'], array_keys($this->deductTypeName))) {
                 $typeName = $this->deductTypeName[$deduct['deduct_type']];
             } else {
                 $typeName = empty($deduct['deduct_type_name']) ? '' : $deduct['deduct_type_name'];
             }
-            $deducts[] = array(
+            $deducts[] = [
                 'deduct_id' => $deduct['deduct_id'],
                 'deduct_type' => $deduct['deduct_type'],
                 'deduct_type_name' => $typeName,
                 'deduct_amount' => $deduct['deduct_amount'],
                 'snapshot' => empty($deduct['snapshot']) ? null : $deduct['snapshot'],
-            );
+            ];
         }
 
         if ($deducts) {
             $orderItem['deducts'] = $deducts;
         }
 
-        return array($orderItem);
+        return [$orderItem];
     }
 
     public function getTradePayCashAmount($order, $coinAmount)
@@ -130,19 +130,19 @@ class OrderFacadeServiceImpl extends BaseService implements OrderFacadeService
     /**
      * @param $type 用于查找相应的实现类， 目前分为 'OrderFacade' 和 'Marketing'
      */
-    public function createSpecialOrder(Product $product, $userId, $params = array(), $type = 'OrderFacade')
+    public function createSpecialOrder(Product $product, $userId, $params = [], $type = 'OrderFacade')
     {
         $sepcialOrderService = $this->createService($type.':SpecialOrderService');
 
-        $orderFields = array(
+        $orderFields = [
             'title' => $product->title,
             'user_id' => $userId,
             'source' => empty($params['source']) ? 'self' : $params['source'],
             'price_type' => 'CNY',
             'created_reason' => empty($params['created_reason']) ? '' : $params['created_reason'],
             'create_extra' => empty($params['create_extra']) ? '' : $params['create_extra'],
-            'deducts' => empty($params['deducts']) ? array() : $params['deducts'],
-        );
+            'deducts' => empty($params['deducts']) ? [] : $params['deducts'],
+        ];
 
         $orderFields = $sepcialOrderService->beforeCreateOrder($orderFields, $params);
 
@@ -151,18 +151,28 @@ class OrderFacadeServiceImpl extends BaseService implements OrderFacadeService
         $order = $this->getWorkflowService()->start($orderFields, $orderItems);
 
         $price = empty($orderFields['create_extra']['price']) ? 0 : $orderFields['create_extra']['price'];
+        //修复来自SCRM订单价格不能大于原价
+        $joinType = isset($orderFields['create_extra']['joinType']) ? $orderFields['create_extra']['joinType'] : '';
 
-        if ($price > 0 && !MathToolkit::isEqual($order['pay_amount'], MathToolkit::simple($price, 100))) {
+        if ($price > 0 && !MathToolkit::isEqual($order['pay_amount'], MathToolkit::simple($price, 100)) && 'SCRM' != $joinType) {
             $this->getWorkflowService()->adjustPrice($order['id'], MathToolkit::simple($price, 100));
         }
 
-        $this->getWorkflowService()->paying($order['id'], array());
+        if ('SCRM' == $joinType && $order['pay_amount'] > MathToolkit::simple($price, 100)) {
+            $this->getWorkflowService()->adjustPrice($order['id'], MathToolkit::simple($price, 100));
+        }
 
-        $data = array(
+        if ('SCRM' == $joinType && 0 == (int) $order['pay_amount']) {
+            return $order;
+        }
+
+        $this->getWorkflowService()->paying($order['id'], []);
+
+        $data = [
             'trade_sn' => '',
             'pay_time' => 0,
             'order_sn' => $order['sn'],
-        );
+        ];
 
         $data = $sepcialOrderService->beforePayOrder($data, $params);
 
@@ -189,11 +199,12 @@ class OrderFacadeServiceImpl extends BaseService implements OrderFacadeService
         if (!empty($this->biz['order.product.'.$orderItem['target_type']])) {
             /* @var $product Product */
             $product = $this->biz['order.product.'.$orderItem['target_type']];
-            $product->init(array(
+            $product->init([
                 'targetId' => $orderItem['target_id'],
                 'num' => $orderItem['num'],
                 'unit' => $orderItem['unit'],
-            ));
+                'orderItemId' => $orderItem['id'],
+            ]);
 
             return $product;
         } else {
@@ -204,6 +215,14 @@ class OrderFacadeServiceImpl extends BaseService implements OrderFacadeService
     public function sumOrderItemPayAmount($conditions)
     {
         return $this->getOrderService()->sumOrderItemPayAmount($conditions);
+    }
+
+    public function sumOrderPayAmount($conditions)
+    {
+        $orderItems = $this->getOrderService()->searchOrderItems($conditions, [], 0, PHP_INT_MAX, ['order_id']);
+        $paidAmount = empty($orderItems) ? 0 : $this->getOrderService()->sumPaidAmount(['ids' => array_column($orderItems, 'order_id')]);
+
+        return empty($paidAmount['payAmount']) ? 0 : $paidAmount['payAmount'];
     }
 
     public function checkOrderBeforePay($sn, $params)
@@ -258,7 +277,7 @@ class OrderFacadeServiceImpl extends BaseService implements OrderFacadeService
     public function addDealer($dealer)
     {
         if (empty($this->dealers)) {
-            $this->dealers = array();
+            $this->dealers = [];
         }
 
         $class = $dealer->getClass();
@@ -282,10 +301,26 @@ class OrderFacadeServiceImpl extends BaseService implements OrderFacadeService
         }
     }
 
+    public function closeOrders($conditions)
+    {
+        if (empty($conditions['target_type']) || empty($conditions['status'])) {
+            return;
+        }
+        $orderItems = $this->getOrderService()->searchOrderItems($conditions, [], [], PHP_INT_MAX);
+        if (empty($orderItems)) {
+            return;
+        }
+
+        $orderIds = ArrayToolkit::column($orderItems, 'order_id');
+        foreach ($orderIds as $orderId) {
+            $this->getWorkflowService()->close($orderId);
+        }
+    }
+
     private function getTotalDeductExcludeAdjust($deducts)
     {
         $totalDeductAmountExcludeAdjust = 0;
-        $adjustDeduct = array();
+        $adjustDeduct = [];
         foreach ($deducts as $deduct) {
             if (self::DEDUCT_TYPE_ADJUST == $deduct['deduct_type']) {
                 $adjustDeduct = $deduct;
@@ -294,7 +329,7 @@ class OrderFacadeServiceImpl extends BaseService implements OrderFacadeService
             }
         }
 
-        return array($totalDeductAmountExcludeAdjust, $adjustDeduct);
+        return [$totalDeductAmountExcludeAdjust, $adjustDeduct];
     }
 
     /**

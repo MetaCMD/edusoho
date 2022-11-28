@@ -17,6 +17,13 @@ class ThirdPartyOAuth2AuthenticationListener extends BaseAuthenticationListener
         if (($accessToken = $request->request->get('access_token'))
             && ($openid = $request->request->get('openid'))
             && ($type = $request->request->get('type'))) {
+            if ('apple' == $type) {
+                $user = $this->getUserService()->getUserBindByTypeAndFromId($type, $openid);
+                if (empty($user)) {
+                    return;
+                }
+            }
+
             $client = $this->createOAuthClient($type);
             $thirdPartyUser = $client->getUserInfo($client->makeToken($type, $accessToken, $openid, $request->request->get('appid')));
             $this->getUserTokenFromAccessToken($request, $thirdPartyUser, $type);
@@ -29,6 +36,7 @@ class ThirdPartyOAuth2AuthenticationListener extends BaseAuthenticationListener
     {
         $user = $this->getUserService()->getUserBindByTypeAndFromId($type, $thirdPartyUser['id']);
         if ($user) {
+            $this->checkUserLocked($user['toId']);
             $token = $this->createTokenFromRequest($request, $user['toId']);
             $this->getTokenStorage()->setToken($token);
         }
@@ -38,6 +46,7 @@ class ThirdPartyOAuth2AuthenticationListener extends BaseAuthenticationListener
 
     /**
      * @param $type
+     *
      * @return \AppBundle\Component\OAuthClient\AbstractOauthClient
      */
     protected function createOAuthClient($type)
@@ -48,6 +57,10 @@ class ThirdPartyOAuth2AuthenticationListener extends BaseAuthenticationListener
             throw SettingException::NOTFOUND_THIRD_PARTY_AUTH_CONFIG();
         }
 
+        if ('apple' == $type) {
+            return $this->createAppleClient();
+        }
+
         if (empty($settings) || !isset($settings[$type.'_enabled']) || empty($settings[$type.'_key']) || empty($settings[$type.'_secret'])) {
             throw SettingException::NOTFOUND_THIRD_PARTY_AUTH_CONFIG();
         }
@@ -56,11 +69,24 @@ class ThirdPartyOAuth2AuthenticationListener extends BaseAuthenticationListener
             throw SettingException::FORBIDDEN_THIRD_PARTY_AUTH();
         }
 
-        $config = array('key' => $settings[$type.'_key'], 'secret' => $settings[$type.'_secret']);
+        $config = ['key' => $settings[$type.'_key'], 'secret' => $settings[$type.'_secret']];
 
-        $client = OAuthClientFactory::create($type, $config);
+        return OAuthClientFactory::create($type, $config);
+    }
 
-        return $client;
+    protected function createAppleClient()
+    {
+        $settings = $this->getSettingService()->get('login_bind');
+
+        if (empty($settings['enabled'])) {
+            throw SettingException::NOTFOUND_THIRD_PARTY_AUTH_CONFIG();
+        }
+
+        $config = $this->getSettingService()->get('apple_setting', []);
+        $config['key'] = empty($config['keyId']) ? '' : $config['keyId'];
+        $config['secret'] = empty($config['secretKey']) ? '' : $config['secretKey'];
+
+        return OAuthClientFactory::create('apple', $config);
     }
 
     /**

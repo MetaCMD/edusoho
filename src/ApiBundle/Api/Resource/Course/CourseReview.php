@@ -5,8 +5,12 @@ namespace ApiBundle\Api\Resource\Course;
 use ApiBundle\Api\Annotation\ApiConf;
 use ApiBundle\Api\ApiRequest;
 use ApiBundle\Api\Resource\AbstractResource;
+use Biz\Common\CommonException;
 use Biz\Course\CourseException;
 
+/**
+ * Class CourseReview
+ */
 class CourseReview extends AbstractResource
 {
     /**
@@ -20,25 +24,39 @@ class CourseReview extends AbstractResource
             throw CourseException::NOTFOUND_COURSE();
         }
 
-        $conditions = array(
-            'courseId' => $courseId,
-            'private' => 0,
-        );
+        return $this->invokeResource(new ApiRequest(
+            '/api/review',
+            'GET',
+            [
+                'targetType' => 'course',
+                'targetId' => $courseId,
+                'offset' => $request->query->get('offset', static::DEFAULT_PAGING_OFFSET),
+                'limit' => $request->query->get('limit', static::DEFAULT_PAGING_LIMIT),
+                'orderBys' => ['updatedTime' => 'DESC'],
+            ]
+        ));
+    }
 
-        $offset = $request->query->get('offset', static::DEFAULT_PAGING_OFFSET);
-        $limit = $request->query->get('limit', static::DEFAULT_PAGING_LIMIT);
-        $reviews = $this->service('Course:ReviewService')->searchReviews(
-            $conditions,
-            array('updatedTime' => 'DESC'),
-            $offset,
-            $limit
-        );
+    public function add(ApiRequest $request, $courseId)
+    {
+        $rating = $request->request->get('rating');
+        $content = $request->request->get('content');
 
-        $this->getOCUtil()->multiple($reviews, array('userId'));
-        $this->getOCUtil()->multiple($reviews, array('courseId'), 'course');
+        if (empty($rating) || empty($content)) {
+            throw CommonException::ERROR_PARAMETER_MISSING();
+        }
 
-        $total = $this->service('Course:ReviewService')->searchReviewsCount($conditions);
-
-        return $this->makePagingObject($reviews, $total, $offset, $limit);
+        return $this->invokeResource(new ApiRequest(
+            '/api/reviews',
+            'POST',
+            [],
+            [
+                'targetType' => 'course',
+                'targetId' => $courseId,
+                'userId' => $this->getCurrentUser()->getId(),
+                'rating' => $request->request->get('rating'),
+                'content' => $request->request->get('content'),
+            ]
+        ));
     }
 }

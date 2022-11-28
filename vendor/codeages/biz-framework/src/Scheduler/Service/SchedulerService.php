@@ -20,6 +20,8 @@ interface SchedulerService
 
     public function findExecutingJobFiredByJobId($jobId);
 
+    public function findJobFiredByJobName($jobName);
+
     public function searchJobLogs($condition, $orderBy, $start, $limit);
 
     public function countJobLogs($condition);
@@ -41,4 +43,8 @@ interface SchedulerService
     public function updateJobProcess($id, $process);
 
     public function updateJob($id, $fields);
+
+    public function getJobByName($name);
+
+    public function getJob($id);
 }

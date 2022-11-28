@@ -2,17 +2,19 @@
 
 namespace AppBundle\Controller\Cashier;
 
+use AppBundle\Common\MathToolkit;
 use AppBundle\Controller\BaseController;
 use Biz\Order\OrderException;
 use Biz\OrderFacade\Service\OrderFacadeService;
+use Biz\System\Service\SettingService;
 use Biz\User\UserException;
+use Biz\WeChat\Service\WeChatService;
 use Codeages\Biz\Order\Service\OrderService;
 use Codeages\Biz\Order\Status\Order\CreatedOrderStatus;
 use Codeages\Biz\Pay\Service\AccountService;
 use Codeages\Biz\Pay\Service\PayService;
 use Codeages\Biz\Pay\Status\PayingStatus;
 use Symfony\Component\HttpFoundation\Request;
-use AppBundle\Common\MathToolkit;
 
 class CashierController extends BaseController
 {
@@ -23,7 +25,7 @@ class CashierController extends BaseController
         $order = $this->getOrderService()->getOrderBySn($sn);
         $order = MathToolkit::multiply(
             $order,
-            array('price_amount', 'pay_amount'),
+            ['price_amount', 'pay_amount'],
             0.01
         );
 
@@ -32,24 +34,33 @@ class CashierController extends BaseController
         }
 
         if ($this->getOrderFacadeService()->isOrderPaid($order['id'])) {
-            return $this->forward('AppBundle:Cashier/Cashier:purchaseSuccess', array('trade' => array(
+            return $this->forward('AppBundle:Cashier/Cashier:purchaseSuccess', ['trade' => [
                 'order_sn' => $order['sn'],
-            )));
+            ]]);
         }
 
-        if (!in_array($order['status'], array(CreatedOrderStatus::NAME, PayingStatus::NAME))) {
+        if (!in_array($order['status'], [CreatedOrderStatus::NAME, PayingStatus::NAME])) {
             return $this->createMessageResponse('info', $this->trans('cashier.order.status.changed_tips'));
         }
 
         $payments = $this->getPayService()->findEnabledPayments();
 
+        try {
+            $unablePay = false;
+            $product = $this->getProduct($order['id']);
+            $product->validate();
+        } catch (\Exception $e) {
+            $unablePay = true;
+        }
+
         return $this->render(
             'cashier/show.html.twig',
-            array(
+            [
                 'order' => $order,
-                'product' => $this->getProduct($order['id']),
+                'product' => $product,
                 'payments' => $payments,
-            )
+                'unablePay' => $unablePay,
+            ]
         );
     }
 
@@ -78,16 +89,16 @@ class CashierController extends BaseController
         $tradeSn = $request->query->get('trade_sn');
         $trade = $this->getPayService()->getTradeByTradeSn($tradeSn);
 
-        return $this->forward("AppBundle:Cashier/Cashier:{$trade['type']}Success", array(
+        return $this->forward("AppBundle:Cashier/Cashier:{$trade['type']}Success", [
             'trade' => $trade,
-        ));
+        ]);
     }
 
     public function rechargeSuccessAction($trade)
     {
-        return $this->render('cashier/success.html.twig', array(
+        return $this->render('cashier/success.html.twig', [
             'goto' => $this->generateUrl('my_coin'),
-        ));
+        ]);
     }
 
     public function purchaseSuccessAction($trade)
@@ -97,16 +108,17 @@ class CashierController extends BaseController
         $items = $this->getOrderService()->findOrderItemsByOrderId($order['id']);
         $item1 = reset($items);
 
-        $params = array(
+        $params = [
             'targetId' => $item1['target_id'],
             'num' => $item1['num'],
             'unit' => $item1['unit'],
-        );
+        ];
         $product = $this->getOrderFacadeService()->getOrderProduct($item1['target_type'], $params);
 
-        return $this->render('cashier/success.html.twig', array(
+        return $this->render('cashier/success.html.twig', [
             'goto' => $this->generateUrl($product->successUrl[0], $product->successUrl[1]),
-        ));
+            'product' => $product,
+        ]);
     }
 
     public function priceAction(Request $request, $sn)
@@ -118,9 +130,9 @@ class CashierController extends BaseController
             $coinAmount
         );
 
-        return $this->createJsonResponse(array(
+        return $this->createJsonResponse([
             'data' => $this->get('web.twig.order_extension')->majorCurrency($priceAmount),
-        ));
+        ]);
     }
 
     public function checkPayPasswordAction(Request $request)
@@ -132,16 +144,16 @@ class CashierController extends BaseController
         $maxAllowance = $rateLimiter->getAllow($user['email']);
 
         if (empty($maxAllowance)) {
-            $response = array('success' => false, 'message' => '错误次数太多，请5分钟后再试');
+            $response = ['success' => false, 'message' => '错误次数太多，请5分钟后再试'];
             goto end;
         }
         $isRight = $this->getAccountService()->validatePayPassword($this->getUser()->getId(), $password);
 
         if (!$isRight) {
             $rateLimiter->check($user['email']);
-            $response = array('success' => false, 'message' => '支付密码不正确');
+            $response = ['success' => false, 'message' => '支付密码不正确'];
         } else {
-            $response = array('success' => true, 'message' => '支付密码正确');
+            $response = ['success' => true, 'message' => '支付密码正确'];
         }
         end:
         return $this->createJsonResponse($response);
@@ -179,9 +191,20 @@ class CashierController extends BaseController
         return $this->createService('Order:OrderService');
     }
 
-    private function getWorkflowService()
+    /**
+     * @return SettingService
+     */
+    private function getSettingService()
     {
-        return $this->createService('Order:WorkflowService');
+        return $this->createService('System:SettingService');
+    }
+
+    /**
+     * @return WeChatService
+     */
+    private function getWeChatService()
+    {
+        return $this->createService('WeChat:WeChatService');
     }
 
     /**

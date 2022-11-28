@@ -4,11 +4,12 @@ namespace AppBundle\Controller\Order;
 
 use AppBundle\Controller\BaseController;
 use Biz\Coupon\Service\CouponService;
+use Biz\Distributor\Util\DistributorCookieToolkit;
+use Biz\Goods\GoodsEntityFactory;
 use Biz\OrderFacade\Product\Product;
 use Biz\OrderFacade\Service\OrderFacadeService;
 use Codeages\Biz\Pay\Service\PayService;
 use Symfony\Component\HttpFoundation\Request;
-use Biz\Distributor\Util\DistributorCookieToolkit;
 
 class OrderController extends BaseController
 {
@@ -17,29 +18,47 @@ class OrderController extends BaseController
         $product = $this->getProduct($request->query->get('targetType'), $request->query->all());
 
         $product->setAvailableDeduct();
-        $product->setPickedDeduct(array());
+        $product->setPickedDeduct([]);
 
-        return $this->render('order/show/index.html.twig', array(
+        $location = [
+            'targetType' => $product->targetType,
+            'targetId' => $product->targetId,
+        ];
+
+        if ('course' === $location['targetType'] && '0' != $location['targetId']) {
+            $course = $this->getCourseService()->getCourse($location['targetId']);
+            $location['targetId'] = $course['courseSetId'];
+        }
+        $informationCollectEvent = $this->getInformationCollectEventService()->getEventByActionAndLocation('buy_before', $location);
+
+        return $this->render('order/show/index.html.twig', [
             'product' => $product,
-        ));
+            'informationCollectEvent' => $informationCollectEvent,
+        ]);
     }
 
     public function createAction(Request $request)
     {
-        $product = $this->getProduct($request->request->get('targetType'), $request->request->all());
+        $targetType = $request->request->get('targetType');
+        $fields = $request->request->all();
+        if (in_array($targetType, ['classroom', 'course'])) {
+            $specs = $this->getGoodsEntityFactory()->create($targetType)->getSpecsByTargetId($fields['targetId']);
+            $fields['targetId'] = $specs['id'];
+        }
+        $product = $this->getProduct($targetType, $fields);
         $product->setPickedDeduct($request->request->all());
 
         $this->addCreateDealers($request);
 
         $order = $this->getOrderFacadeService()->create($product);
-        $response = $this->redirectSafely($this->generateUrl('cashier_show', array(
+        $response = $this->redirectSafely($this->generateUrl('cashier_show', [
             'sn' => $order['sn'],
-        )));
+        ]));
 
         $resonse = DistributorCookieToolkit::clearCookieToken(
             $request,
             $response,
-            array('checkedType' => DistributorCookieToolkit::PRODUCT_ORDER)
+            ['checkedType' => DistributorCookieToolkit::PRODUCT_ORDER]
         );
 
         return $response;
@@ -49,6 +68,10 @@ class OrderController extends BaseController
     {
         $targetType = $request->query->get('targetType');
         $fields = $request->query->all();
+        if (in_array($targetType, ['classroom', 'course'])) {
+            $specs = $this->getGoodsEntityFactory()->create($targetType)->getSpecsByTargetId($fields['targetId']);
+            $fields['targetId'] = $specs['id'];
+        }
 
         $product = $this->getProduct($targetType, $fields);
         $product->setPickedDeduct($fields);
@@ -57,11 +80,11 @@ class OrderController extends BaseController
         $deducts = $product->getDeducts();
 
         return $this->createJsonResponse(
-            array(
+            [
                 'price' => $product->getPayablePrice(),
                 'priceFormat' => $priceFormat,
                 'deducts' => $deducts,
-            )
+            ]
         );
     }
 
@@ -85,15 +108,32 @@ class OrderController extends BaseController
             $id = $request->request->get('targetId');
             $type = $request->request->get('targetType');
             $price = $request->request->get('price');
-            if ($this->isPluginInstalled('Coupon')) {
-                $coupon = $this->getCouponService()->getCouponByCode($code);
-                $batch = $this->getCouponBatchService()->getBatch($coupon['batchId']);
-                if (empty($batch['codeEnable'])) {
-                    $message = array('useable' => 'no', 'message' => '该优惠券不存在');
 
-                    return $this->createJsonResponse($message);
-                }
+            $user = $this->getCurrentUser();
+            $limiter = $this->getRateLimiter('coupon_check_limit', 60, 3600);
+            $maxAllowance = $limiter->getAllow($user['id']);
+            if (0 == $maxAllowance) {
+                $message = ['useable' => 'no', 'message' => '优惠码校验受限，请稍后尝试'];
+
+                return $this->createJsonResponse($message);
             }
+
+            $coupon = $this->getCouponService()->getCouponByCode($code);
+            $batch = $this->getCouponBatchService()->getBatch($coupon['batchId']);
+            $limiter->check($user['id']);
+            if (empty($batch['codeEnable'])) {
+                $message = ['useable' => 'no', 'message' => '该优惠券不存在'];
+
+                return $this->createJsonResponse($message);
+            }
+
+            if (isset($batch['deadlineMode']) && 'day' == $batch['deadlineMode']) {
+                //ES优惠券领取时，对于优惠券过期时间会加86400秒，所以计算deadline时对于固定天数模式应与设置有效期模式一致，都为当天凌晨00:00:00
+                $fields['deadline'] = strtotime(date('Y-m-d')) + 24 * 60 * 60 * $batch['fixedDay'];
+
+                $this->getCouponService()->updateCoupon($coupon['id'], $fields);
+            }
+
             $coupon = $this->getCouponService()->checkCoupon($code, $id, $type);
             if (isset($coupon['useable']) && 'no' == $coupon['useable']) {
                 return $this->createJsonResponse($coupon);
@@ -124,7 +164,7 @@ class OrderController extends BaseController
 
         $users = $this->getUserService()->findUsersByIds(array_column($orderLogs, 'user_id'));
 
-        return $this->render('order/detail-modal.html.twig', array(
+        return $this->render('order/detail-modal.html.twig', [
             'order' => $order,
             'user' => $user,
             'orderLogs' => $orderLogs,
@@ -132,7 +172,14 @@ class OrderController extends BaseController
             'paymentTrade' => $paymentTrade,
             'orderDeducts' => $orderDeducts,
             'users' => $users,
-        ));
+        ]);
+    }
+
+    protected function getRateLimiter($id, $maxAllowance, $period)
+    {
+        $factory = $this->getBiz()->offsetGet('ratelimiter.factory');
+
+        return $factory($id, $maxAllowance, $period);
     }
 
     /**
@@ -174,7 +221,7 @@ class OrderController extends BaseController
 
     private function addCreateDealers(Request $request)
     {
-        $serviceNames = array('Distributor:DistributorProductDealerService');
+        $serviceNames = ['Distributor:DistributorProductDealerService', 'S2B2C:S2B2CProductDealerService'];
 
         foreach ($serviceNames as $serviceName) {
             $service = $this->createService($serviceName);
@@ -186,6 +233,26 @@ class OrderController extends BaseController
     //插件service
     protected function getCouponBatchService()
     {
-        return $this->createService('CouponPlugin:Coupon:CouponBatchService');
+        return $this->createService('Coupon:CouponBatchService');
+    }
+
+    protected function getInformationCollectEventService()
+    {
+        return $this->createService('InformationCollect:EventService');
+    }
+
+    protected function getCourseService()
+    {
+        return $this->createService('Course:CourseService');
+    }
+
+    /**
+     * @return GoodsEntityFactory
+     */
+    protected function getGoodsEntityFactory()
+    {
+        $biz = $this->getBiz();
+
+        return $biz['goods.entity.factory'];
     }
 }

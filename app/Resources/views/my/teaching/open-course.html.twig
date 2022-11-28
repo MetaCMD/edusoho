@@ -3,26 +3,34 @@
 
 {% block title %}{{'my.teaching.page_title'|trans}} - {{ parent() }}{% endblock %}
 
-{% set side_nav = 'my-teaching-courses' %}
+{% set side_nav = 'my-teaching-open-courses' %}
 
 {% set type = "question" %}
 
 {% block main %}
-  {% include 'my/teaching/course-type-select.html.twig' %}
-
+  {% include 'my/teaching/open-course-type-select.html.twig' %}
+  <div class="my-teaching-status">
+    <ul>
+      <li {% if tab == 'publish' %}class="active" {% endif %}><a href="{{path('my_teaching_open_courses',{'tab': 'publish', filter:filter})}}">{{'course.status.published'|trans}}</a></li>
+      <li {% if tab == 'unPublish' %}class="active" {% endif %}><a href="{{path('my_teaching_open_courses',{'tab': 'unPublish', filter:filter})}}">{{'course.status.unpublished'|trans}}</a></li>
+      <li {% if tab == 'closed' %}class="active" {% endif %}><a href="{{path('my_teaching_open_courses',{'tab': 'closed', filter:filter})}}">{{'course.status.closed'|trans}}</a></li>
+    </ul>
+  </div>
   {% for course in courses %}
     <div class="open-course-item">
       {% include 'my/teaching/open-course-list.html.twig' %}
     </div>
   {% else %}
     <div class="empty">
-      <a class="cd-link-primary" href="{{ path('course_set_manage_create') }}" target="_blank">
-        {% if filter|default('normal') == 'live' %}
-          {{ 'my.teaching.course_set.live_empty_hint'|trans }}
-        {% else %}
-          {{ 'my.teaching.course_set.empty_hint'|trans }}
-        {% endif %}
-      </a>
+      {% if has_permission('admin_v2_course_content_manage') or 'ROLE_TEACHER' in app.user.roles %}
+        <a class="cd-link-primary" href="{{ path('course_set_manage_create') }}" target="_blank">
+          {% if filter|default('normal') == 'live' %}
+            {{ 'my.teaching.course_set.live_empty_hint'|trans }}
+          {% else %}
+            {{ 'my.teaching.course_set.empty_hint'|trans }}
+          {% endif %}
+        </a>
+      {% endif %}
     </div>
   {% endfor %}
 

@@ -1,5 +1,6 @@
 import Chooser from './chooser';
 import notify from 'common/notify';
+import { Browser } from 'common/utils';
 
 export default class UploaderChooser extends Chooser {
   constructor(element) {
@@ -16,12 +17,22 @@ export default class UploaderChooser extends Chooser {
     }
 
     let $uploader = this.element.find('#uploader-container');
+    const uploaderAccpet = $uploader.data('accept');
+    const currentType = $uploader.data('uploadType');
+    if (currentType == 'video') {
+      const isSupportM4V = (Browser.ie10 || Browser.ie11 || Browser.edge || Browser.firefox);
+      const extraMime = isSupportM4V ? '.flv, .m4v': '.flv';
+      uploaderAccpet.mimeTypes.push(extraMime);
+    }
 
     this._sdk = new UploaderSDK({
       id: $uploader.attr('id'),
+      sdkBaseUri: app.cloudSdkBaseUri,
+      disableDataUpload: app.cloudDisableLogReport,
+      disableSentry: app.cloudDisableLogReport,
       initUrl: $uploader.data('initUrl'),
       finishUrl: $uploader.data('finishUrl'),
-      accept: $uploader.data('accept'),
+      accept: uploaderAccpet,
       process: this._getUploadProcess(),
       ui: 'single',
       locale: document.documentElement.lang
@@ -67,8 +78,15 @@ export default class UploaderChooser extends Chooser {
     return uploadProcess;
   }
 
-  _onFileUploadFinish(file) {
-    file.source = 'self';
+  _onFileUploadFinish(uploadFile) {
+    let file = {
+      'source' : 'self',
+      'id' : uploadFile.fileId,
+      'name' : uploadFile.name,
+      'hashId' : uploadFile.initResponse.hashId,
+      'globalId' : uploadFile.globalId,
+      'length' : uploadFile.length ? uploadFile.length : 0,
+    };
 
     let placeFileName = (name) => {
       $('[data-role="placeholder"]').html(name);

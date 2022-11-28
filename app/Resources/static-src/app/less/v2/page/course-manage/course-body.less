@@ -303,3 +303,76 @@
     position: absolute;
   }
 }
+
+.courseset-manage-move-tip{
+  text-align: center;
+  .move-tip__img{
+    margin:auto;
+    width: 26%;
+  }
+  p{
+    margin:40px 0;
+    padding:0;
+    font-size:16px;
+    font-family:PingFangSC-Regular,PingFang SC;
+    font-weight:400;
+    color:rgba(102,102,102,1);
+    line-height:24px;
+  }
+  .move-tip__btn{
+    padding-left: 12.6%;
+    padding-right: 12.6%;
+  }
+  @media screen and (max-width: @screen-xs-max) {
+    .move-tip__img{
+      margin:auto;
+      width: 50%;
+    }
+  }
+}
+
+.el-popover-drainage-img {
+  padding: 6px !important;
+  border-radius: 24px !important;
+}
+
+.qr-uploader {
+  .el-upload {
+    overflow: hidden;
+    position: relative;
+    cursor: pointer;
+    border: 1px dashed #d9d9d9;
+    border-radius: 6px;
+
+    &:hover {
+      border-color: #409eff;
+    }
+  }
+
+  .qr-uploader-icon {
+    font-size: 28px;
+    color: #8c939d;
+    width: 128px;
+    height: 128px;
+    line-height: 128px !important;
+    text-align: center;
+  }
+
+  .qr {
+    width: 128px;
+    height: 128px;
+  }
+
+  .el-upload__tip {
+    margin-top: 0;
+    line-height: 20px;
+  }
+
+  .el-upload__input {
+    display: none !important;
+  }
+}
+
+
+
+

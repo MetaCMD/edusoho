@@ -71,7 +71,7 @@ export default class Base {
       rules: {
         title: {
           required: true,
-          maxlength: 60,
+          byte_maxlength: 200,
           trim: true,
           course_title: true,
         },
@@ -154,7 +154,7 @@ export default class Base {
   }
 
   initCategory() {
-    $('[data-role="tree-select"], [name="categoryId"]').select2({
+    $('[name="categoryId"]').select2({
       treeview: true,
       dropdownAutoWidth: true,
       treeviewInitState: 'collapsed',

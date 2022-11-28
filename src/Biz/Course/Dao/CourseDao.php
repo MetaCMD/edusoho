@@ -20,13 +20,19 @@ interface CourseDao extends GeneralDaoInterface
 
     public function findCoursesByIds($ids);
 
+    public function findCoursesByCategoryIds($categoryIds);
+
     public function findCourseSetIncomesByCourseSetIds(array $courseSetIds);
+
+    public function sumTotalIncomeByIds(array $ids);
 
     public function analysisCourseDataByTime($startTime, $endTime);
 
     public function findCoursesByParentIdAndLocked($parentId, $locked);
 
     public function findCoursesByParentIds($parentIds);
+
+    public function findProductIdAndGoodsIdAndSpecsIdByIds($ids);
 
     public function getMinAndMaxPublishedCoursePriceByCourseSetId($courseSetId);
 
@@ -45,4 +51,6 @@ interface CourseDao extends GeneralDaoInterface
     public function searchByRatingAndTimeZone($conditions, $start, $limit);
 
     public function countWithJoinCourseSet($conditions);
+
+    public function findCourseByCourseSetTitleLike($courseSetTitle);
 }

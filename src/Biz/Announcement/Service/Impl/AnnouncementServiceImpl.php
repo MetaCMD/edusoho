@@ -26,6 +26,8 @@ class AnnouncementServiceImpl extends BaseService implements AnnouncementService
 
     public function countAnnouncements($conditions)
     {
+        $conditions = $this->_prepareSearchConditions($conditions);
+
         return $this->getAnnouncementDao()->count($conditions);
     }
 
@@ -107,8 +109,17 @@ class AnnouncementServiceImpl extends BaseService implements AnnouncementService
     protected function _prepareSearchConditions($conditions)
     {
         $targetType = array('course', 'classroom', 'global');
-        if (!in_array($conditions['targetType'], $targetType)) {
+        if (!empty($conditions['targetType']) && !in_array($conditions['targetType'], $targetType)) {
             $this->createNewException(AnnouncementException::TYPE_INVALID());
+        }
+
+        if (!isset($conditions['likeOrgCode']) && !isset($conditions['orgCode']) && !isset($conditions['orgId'])) {
+            $conditions['orgCode'] = $this->getCurrentUser()->getSelectOrgCode();
+        }
+
+        if (isset($conditions['likeOrgCode']) && !empty($conditions['likeOrgCode'])) {
+            $conditions['orgCode'] = $conditions['likeOrgCode'];
+            unset($conditions['likeOrgCode']);
         }
 
         return $conditions;

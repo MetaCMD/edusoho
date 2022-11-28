@@ -29,16 +29,11 @@ class NormalStrategy extends BaseStrategy implements CourseStrategy
     {
         $task = parent::updateTask($id, $fields);
 
-        $conditions = array(
-            'courseId' => $task['courseId'],
-            'categoryId' => $task['categoryId'],
-        );
-        $categoryTaskCount = $this->getTaskService()->countTasks($conditions);
-        if ($categoryTaskCount <= 1) {
+        if ($task['isLesson']) {
             $this->getCourseService()->updateChapter(
                 $task['courseId'],
                 $task['categoryId'],
-                array('title' => $task['title'])
+                ['title' => $task['title']]
             );
         }
 
@@ -51,12 +46,12 @@ class NormalStrategy extends BaseStrategy implements CourseStrategy
         $tasks = $this->getTaskService()->findTasksFetchActivityByCourseId($courseId);
         $items = $this->getTasksAndChapters($course['id'], $tasks);
 
-        return array(
-            'data' => array(
+        return [
+            'data' => [
                 'items' => $items,
-            ),
+            ],
             'template' => 'lesson-manage/normal-list.html.twig',
-        );
+        ];
     }
 
     public function getTasksJsonData($task)
@@ -65,54 +60,25 @@ class NormalStrategy extends BaseStrategy implements CourseStrategy
         $taskNum = $this->getTaskService()->countTasksByChpaterId($task['categoryId']);
         $chapter = $this->getChapterDao()->get($task['categoryId']);
         $task['activity'] = $this->getActivityService()->getActivity($task['activityId'], $fetchMedia = true);
-        $tasks = array($task);
-        $chapter['tasks'] = $tasks;
+        $tasks = [$task];
         if (1 == $taskNum) {
             $template = 'lesson-manage/normal/lesson.html.twig';
+        } elseif ($task['isLesson']) {
+            $template = 'lesson-manage/normal/lesson.html.twig';
+            $tasks = $this->getTaskService()->findTasksFetchActivityByChapterId($task['categoryId']);
         } else {
             $template = 'lesson-manage/normal/tasks.html.twig';
         }
+        $chapter['tasks'] = $tasks;
 
-        return array(
-            'data' => array(
+        return [
+            'data' => [
                 'course' => $course,
                 'lesson' => $chapter,
                 'tasks' => $tasks,
-            ),
+            ],
             'template' => $template,
-        );
-    }
-
-    public function deleteTask($task)
-    {
-        if (empty($task)) {
-            return true;
-        }
-
-        try {
-            $this->biz['db']->beginTransaction();
-
-            $this->getTaskDao()->delete($task['id']);
-            $this->getTaskResultService()->deleteUserTaskResultByTaskId($task['id']);
-            $this->getActivityService()->deleteActivity($task['activityId']);
-
-            //课时下面只有一个任务时，则把课时也删除
-            $conditions = array(
-                'courseId' => $task['courseId'],
-                'categoryId' => $task['categoryId'],
-            );
-            $categoryTaskCount = $this->getTaskDao()->count($conditions);
-            if (empty($categoryTaskCount)) {
-                $this->getCourseLessonService()->deleteLesson($task['courseId'], $task['categoryId']);
-            }
-
-            $this->biz['db']->commit();
-        } catch (\Exception $e) {
-            $this->biz['db']->rollback();
-            throw $e;
-        }
-
-        return true;
+        ];
     }
 
     /**
@@ -150,14 +116,14 @@ class NormalStrategy extends BaseStrategy implements CourseStrategy
         }
 
         //取得下一个发布的课时
-        $conditions = array(
+        $conditions = [
             'courseId' => $task['courseId'],
             'seq_LT' => $task['seq'],
             'status' => 'published',
-        );
+        ];
 
         $count = $this->getTaskDao()->count($conditions);
-        $preTasks = $this->getTaskDao()->search($conditions, array('seq' => 'DESC'), 0, $count);
+        $preTasks = $this->getTaskDao()->search($conditions, ['seq' => 'DESC'], 0, $count);
 
         if (empty($preTasks)) {
             return true;
@@ -188,7 +154,7 @@ class NormalStrategy extends BaseStrategy implements CourseStrategy
     // )
     protected function getTasksAndChapters($courseId, $tasks)
     {
-        $items = array();
+        $items = [];
         uasort(
             $tasks,
             function ($item1, $item2) {
@@ -217,7 +183,7 @@ class NormalStrategy extends BaseStrategy implements CourseStrategy
 
     public function prepareCourseItems($courseId, $tasks, $limitNum)
     {
-        $items = array();
+        $items = [];
         foreach ($tasks as $task) {
             $task['itemType'] = 'task';
             $items["task-{$task['id']}"] = $task;
@@ -255,12 +221,12 @@ class NormalStrategy extends BaseStrategy implements CourseStrategy
 
     public function publishTask($task)
     {
-        return $this->getTaskDao()->update($task['id'], array('status' => 'published'));
+        return $this->getTaskDao()->update($task['id'], ['status' => 'published']);
     }
 
     public function unpublishTask($task)
     {
-        return $this->getTaskDao()->update($task['id'], array('status' => 'unpublished'));
+        return $this->getTaskDao()->update($task['id'], ['status' => 'unpublished']);
     }
 
     private function _createLesson($task)

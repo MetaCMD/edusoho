@@ -26,6 +26,7 @@ export default class AudioPlay {
 
     messenger.on('ended', (msg) => {
       this.player.playing = false;
+      msg.playerMsg.playEnd = true; // 标记播放到最后
       this._onFinishLearnTask(msg);
     });
 
@@ -43,10 +44,15 @@ export default class AudioPlay {
   }
 
   _onFinishLearnTask(msg) {
-    this.emitter.emit('finish', { data: msg }).then(() => {
-      console.log('audio.finish');
-    }).catch((error) => {
-      console.error(error);
-    });
+    let playerCurrentTime = msg.playerMsg.currentTime||0;
+    let playerDuration = msg.playerMsg.duration||0;
+
+    if (playerCurrentTime !== 0 && playerDuration !== 0 && (playerDuration - playerCurrentTime < 2)) {
+      this.emitter.emit('finish', { data: msg }).then(() => {
+        console.log('audio.finish');
+      }).catch((error) => {
+        console.error(error);
+      });
+    }
   }
 }

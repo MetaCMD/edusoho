@@ -2,17 +2,22 @@
 
 namespace AppBundle\Twig;
 
+use AppBundle\Common\ArrayToolkit;
+use AppBundle\Common\DynUrlToolkit;
 use AppBundle\Util\AvatarAlert;
+use Biz\Activity\Service\ActivityService;
+use Biz\Certificate\Service\CertificateService;
 use Biz\Classroom\Service\ClassroomService;
 use Biz\Course\Service\CourseService;
+use Biz\Course\Service\CourseSetService;
+use Biz\Course\Service\LessonService;
 use Biz\Course\Service\MemberService;
 use Biz\Course\Util\CourseTitleUtils;
 use Biz\System\Service\SettingService;
 use Biz\Task\Service\TaskService;
 use Codeages\Biz\Framework\Context\Biz;
 use Symfony\Component\DependencyInjection\ContainerInterface;
-use AppBundle\Common\ArrayToolkit;
-use AppBundle\Common\DynUrlToolkit;
+use VipPlugin\Biz\Marketing\VipRightSupplier\CourseVipRightSupplier;
 
 class CourseExtension extends \Twig_Extension
 {
@@ -34,36 +39,89 @@ class CourseExtension extends \Twig_Extension
 
     public function getFilters()
     {
-        return array();
+        return [];
     }
 
     public function getFunctions()
     {
-        return array(
-            new \Twig_SimpleFunction('course_show_metas', array($this, 'getCourseShowMetas')),
-            new \Twig_SimpleFunction('is_buy_course_from_modal', array($this, 'isBuyCourseFromModal')),
-            new \Twig_SimpleFunction('buy_course_need_approve', array($this, 'needApproval')),
-            new \Twig_SimpleFunction('is_member_expired', array($this, 'isMemberExpired')),
-            new \Twig_SimpleFunction('course_chapter_alias', array($this, 'getCourseChapterAlias')),
+        return [
+            new \Twig_SimpleFunction('course_show_metas', [$this, 'getCourseShowMetas']),
+            new \Twig_SimpleFunction('is_buy_course_from_modal', [$this, 'isBuyCourseFromModal']),
+            new \Twig_SimpleFunction('buy_course_need_approve', [$this, 'needApproval']),
+            new \Twig_SimpleFunction('is_member_expired', [$this, 'isMemberExpired']),
+            new \Twig_SimpleFunction('course_chapter_alias', [$this, 'getCourseChapterAlias']),
             //课程视频转音频完成率
-            new \Twig_SimpleFunction('video_convert_completion', array($this, 'getAudioConvertionStatus')),
-            new \Twig_SimpleFunction('is_support_enable_audio', array($this, 'isSupportEnableAudio')),
-            new \Twig_SimpleFunction('get_course', array($this, 'getCourse')),
-            new \Twig_SimpleFunction('course_daily_tasks_num', array($this, 'getCourseDailyTasksNum')),
-            new \Twig_SimpleFunction('dyn_url', array($this, 'getDynUrl')),
-            new \Twig_SimpleFunction('get_course_types', array($this, 'getCourseTypes')),
-            new \Twig_SimpleFunction('is_task_available', array($this, 'isTaskAvailable')),
-            new \Twig_SimpleFunction('is_discount', array($this, 'isDiscount')),
-            new \Twig_SimpleFunction('get_course_count', array($this, 'getCourseCount')),
-            new \Twig_SimpleFunction('is_un_multi_courseset', array($this, 'isUnMultiCourseSet')),
-            new \Twig_SimpleFunction('has_mul_courses', array($this, 'hasMulCourses')),
-            new \Twig_SimpleFunction('get_course_title', array($this, 'getCourseTitle')),
-            new \Twig_SimpleFunction('get_formated_course_title', array($this, 'getFormatedCourseTitle')),
-            new \Twig_SimpleFunction('task_list_json_data', array($this, 'taskListJsonData')),
-            new \Twig_SimpleFunction('get_course_tasks', array($this, 'getCourseTasks')),
-            new \Twig_SimpleFunction('is_teacher', array($this, 'isTeacher')),
-            new \Twig_SimpleFunction('next_task', array($this, 'getNextTask')),
+            new \Twig_SimpleFunction('video_convert_completion', [$this, 'getAudioConvertionStatus']),
+            new \Twig_SimpleFunction('is_support_enable_audio', [$this, 'isSupportEnableAudio']),
+            new \Twig_SimpleFunction('get_course', [$this, 'getCourse']),
+            new \Twig_SimpleFunction('course_daily_tasks_num', [$this, 'getCourseDailyTasksNum']),
+            new \Twig_SimpleFunction('dyn_url', [$this, 'getDynUrl']),
+            new \Twig_SimpleFunction('get_course_types', [$this, 'getCourseTypes']),
+            new \Twig_SimpleFunction('is_task_available', [$this, 'isTaskAvailable']),
+            new \Twig_SimpleFunction('is_discount', [$this, 'isDiscount']),
+            new \Twig_SimpleFunction('get_course_count', [$this, 'getCourseCount']),
+            new \Twig_SimpleFunction('is_un_multi_courseset', [$this, 'isUnMultiCourseSet']),
+            new \Twig_SimpleFunction('has_mul_courses', [$this, 'hasMulCourses']),
+            new \Twig_SimpleFunction('get_course_title', [$this, 'getCourseTitle']),
+            new \Twig_SimpleFunction('get_formated_course_title', [$this, 'getFormatedCourseTitle']),
+            new \Twig_SimpleFunction('task_list_json_data', [$this, 'taskListJsonData']),
+            new \Twig_SimpleFunction('get_course_tasks', [$this, 'getCourseTasks']),
+            new \Twig_SimpleFunction('is_teacher', [$this, 'isTeacher']),
+            new \Twig_SimpleFunction('next_task', [$this, 'getNextTask']),
+            new \Twig_SimpleFunction('latest_live_task', [$this, 'getLatestLiveTask']),
+            new \Twig_SimpleFunction('can_obtain_certificates', [$this, 'canObtainCertificates']),
+            new \Twig_SimpleFunction('can_buy_course', [$this, 'canBuyCourse']),
+            new \Twig_SimpleFunction('display_task_title', [$this, 'displayTaskTitle']),
+        ];
+    }
+
+    /**
+     * @param $course
+     * @param $userId
+     * 是否可以购买课程
+     */
+    public function canBuyCourse($course)
+    {
+        $user = $this->biz['user'];
+        if (!$course['buyable']) {
+            if (!$user->isLogin()) {
+                return false;
+            }
+            if (!$this->isPluginInstalled('vip')) {
+                return false;
+            }
+            //会员免费学满足免费学条件，无视课程是否允许购买
+            $status = $this->createService('VipPlugin:Vip:VipService')->checkUserVipRight($user['id'], CourseVipRightSupplier::CODE, $course['id']);
+
+            return 'ok' === $status;
+        }
+        $currentTime = time();
+        //是否超过有效期，超过有效期也不允许
+        return !(
+            ($course['buyExpiryTime'] && $course['buyExpiryTime'] < $currentTime)
+            ||
+            ($course['expiryEndDate'] && $course['expiryEndDate'] < $currentTime)
         );
+    }
+
+    public function getLatestLiveTask()
+    {
+        $user = $this->biz['user'];
+        if (!$user->isLogin()) {
+            return null;
+        }
+        $liveNotifySetting = $this->getSettingService()->get('homepage_live_notify', []);
+        if (empty($liveNotifySetting['enabled'])) {
+            return null;
+        }
+        $startTime = time() + $liveNotifySetting['preTime'] * 60;
+        $endTimeRange = 15 * 60; //结束前固定15分钟
+        $task = $this->getTaskService()->getUserCurrentPublishedLiveTask($user['id'], $startTime, $endTimeRange);
+        if ($task) {
+            $task['courseSet'] = $this->getCourseSetService()->getCourseSet($task['fromCourseSetId']);
+        }
+
+        return $task;
     }
 
     public function getNextTask($taskId)
@@ -72,12 +130,12 @@ class CourseExtension extends \Twig_Extension
         if (empty($task)) {
             return null;
         }
-        $conditions = array(
+        $conditions = [
             'courseId' => $task['courseId'],
             'status' => 'published',
             'seq_GT' => $task['seq'],
-        );
-        $tasks = $this->getTaskService()->searchTasks($conditions, array('seq' => 'ASC'), 0, 1);
+        ];
+        $tasks = $this->getTaskService()->searchTasks($conditions, ['seq' => 'ASC'], 0, 1);
 
         return reset($tasks);
     }
@@ -92,11 +150,11 @@ class CourseExtension extends \Twig_Extension
         return false;
     }
 
-    public function getCourseTasks($courseId, $conditions = array())
+    public function getCourseTasks($courseId, $conditions = [])
     {
         $conditions['courseId'] = $courseId;
 
-        return empty($courseId) ? array() : $this->getTaskService()->searchTasks($conditions, array(), 0, PHP_INT_MAX);
+        return empty($courseId) ? [] : $this->getTaskService()->searchTasks($conditions, [], 0, PHP_INT_MAX);
     }
 
     public function getCourse($id)
@@ -107,24 +165,24 @@ class CourseExtension extends \Twig_Extension
     public function taskListJsonData($courseItems, $showOptional = false)
     {
         if (empty($courseItems)) {
-            return json_encode(array());
+            return json_encode([]);
         }
 
-        $results = array();
+        $results = [];
         foreach ($courseItems as $item) {
             if ($showOptional || !$this->isOptionalTaskLesson($item)) {
-                $default = array(
+                $default = [
                     'lock' => '',
                     'status' => '',
                     'isOptional' => '',
                     'type' => '',
                     'isFree' => '',
-                    'activity' => array(),
+                    'activity' => [],
                     'tryLookable' => '',
-                );
+                ];
                 $item = array_merge($default, $item);
                 $mediaType = empty($item['activity']['mediaType']) ? 'video' : $item['activity']['mediaType'];
-                $results[] = array(
+                $results[] = [
                     'itemType' => $item['itemType'],
                     'number' => $item['number'],
                     'published_number' => empty($item['published_number']) ? 0 : $item['published_number'],
@@ -145,8 +203,9 @@ class CourseExtension extends \Twig_Extension
                     'activityEndTime' => empty($item['activity']['endTime']) ? '' : $item['activity']['endTime'],
                     'fileStorage' => empty($item['activity']['ext']['file']['storage']) ? '' : $item['activity']['ext']['file']['storage'],
                     'isTaskTryLookable' => $item['tryLookable'],
+                    'isTaskShowModal' => $item['tryLookable'] || $item['isFree'],
                     'isSingleTaskLesson' => empty($item['isSingleTaskLesson']) ? false : $item['isSingleTaskLesson'],
-                );
+                ];
             }
         }
 
@@ -155,9 +214,9 @@ class CourseExtension extends \Twig_Extension
 
     public function getCourseCount($courseSetId, $isPublish = 0)
     {
-        $conditions = array(
+        $conditions = [
             'courseSetId' => $courseSetId,
-        );
+        ];
         if ($isPublish) {
             $conditions['status'] = 'published';
         }
@@ -170,7 +229,7 @@ class CourseExtension extends \Twig_Extension
     {
         $courseSet = $this->getCourseSetService()->getCourseSet($courseSetId);
 
-        return in_array($courseSet['type'], array('live', 'reservation')) || !empty($courseSet['parentId']);
+        return in_array($courseSet['type'], ['live', 'reservation']) || !empty($courseSet['parentId']);
     }
 
     /**
@@ -246,12 +305,12 @@ class CourseExtension extends \Twig_Extension
         if ('lesson' == $type) {
             return 'site.data.lesson';
         }
-        $defaultCourseChapterAlias = array(
+        $defaultCourseChapterAlias = [
             'chapter' => 'site.data.chapter',
             'unit' => 'site.data.part',
             'part' => 'site.data.part',
             'task' => 'site.data.task',
-        );
+        ];
 
         $courseSetting = $this->getSettingService()->get('course');
 
@@ -259,12 +318,12 @@ class CourseExtension extends \Twig_Extension
             return $defaultCourseChapterAlias[$type];
         }
 
-        $settingKey = array(
+        $settingKey = [
             'chapter' => 'chapter_name',
             'unit' => 'part_name',
             'part' => 'part_name',
             'task' => 'task_name',
-        );
+        ];
 
         return isset($courseSetting[$settingKey[$type]]) ? $courseSetting[$settingKey[$type]] : $defaultCourseChapterAlias[$type];
     }
@@ -279,9 +338,13 @@ class CourseExtension extends \Twig_Extension
             $classroomRef = $this->getClassroomService()->getClassroomCourseByCourseSetId($course['courseSetId']);
             if (!empty($classroomRef)) {
                 $user = $this->biz['user'];
+                $classroom = $this->getClassroomService()->getClassroom($classroomRef['classroomId']);
                 $member = $this->getClassroomService()->getClassroomMember($classroomRef['classroomId'], $user['id']);
-
-                return $member['deadline'] > 0 && $member['deadline'] < time();
+                if (!empty($member)) {
+                    return !$this->getClassroomService()->isMemberNonExpired($classroom, $member);
+                } else {
+                    return $member['deadline'] > 0 && $member['deadline'] < time();
+                }
             }
         }
 
@@ -316,6 +379,37 @@ class CourseExtension extends \Twig_Extension
         }
 
         return $course['approval'] && 'approved' !== $user['approvalStatus'];
+    }
+
+    public function displayTaskTitle($task)
+    {
+        $number = $this->getTaskService()->countTasks(['categoryId' => $task['categoryId'], 'seq_LT' => $task['seq']]);
+        if ($number) {
+            $task['number'] = $number;
+        } else {
+            $lesson = $this->getLessonService()->getLesson($task['categoryId']);
+            $task['number'] = $lesson['number'];
+        }
+        if ($task['isOptional']) {
+            return $this->trans('course.task.display', [
+                '%taskName%' => $this->trans('course.optional_task'),
+                '%taskNumber%' => '',
+                '%taskTitle%' => $task['title'],
+            ]);
+        }
+        if ('lesson' == $task['mode']) {
+            return $this->trans('course.lesson.display', [
+                '%part_name%' => $this->trans('site.data.lesson'),
+                '%number%' => $task['number'],
+                '%title%' => $task['title'],
+            ]);
+        }
+
+        return $this->trans('course.task.display', [
+            '%taskName%' => $this->trans($this->getCourseChapterAlias('task')),
+            '%taskNumber%' => $task['number'],
+            '%taskTitle%' => $task['title'],
+        ]);
     }
 
     protected function isUserAvatarEmpty()
@@ -361,6 +455,29 @@ class CourseExtension extends \Twig_Extension
         return 'success' == $result['code'];
     }
 
+    public function canObtainCertificates($targetId, $targetType)
+    {
+        $targetIds = [$targetId];
+        if ('courseSet' == $targetType) {
+            $targetType = 'course';
+            $courses = $this->getCourseService()->findCoursesByCourseSetId($targetId);
+            $targetIds = ArrayToolkit::column($courses, 'id');
+        }
+        $certificates = $this->getCertificateService()->search(
+            ['targetIds' => $targetIds, 'targetType' => $targetType, 'status' => 'published'],
+            [],
+            0,
+            1
+        );
+
+        return empty($certificates) ? false : true;
+    }
+
+    protected function trans($key, $parameters = [])
+    {
+        return $this->container->get('translator')->trans($key, $parameters);
+    }
+
     /**
      * @return SettingService
      */
@@ -385,6 +502,9 @@ class CourseExtension extends \Twig_Extension
         return $this->biz->service('Course:CourseService');
     }
 
+    /**
+     * @return CourseSetService
+     */
     protected function getCourseSetService()
     {
         return $this->biz->service('Course:CourseSetService');
@@ -415,6 +535,14 @@ class CourseExtension extends \Twig_Extension
     }
 
     /**
+     * @return LessonService
+     */
+    protected function getLessonService()
+    {
+        return $this->biz->service('Course:LessonService');
+    }
+
+    /**
      * @return
      */
     protected function getUploadFileService()
@@ -439,11 +567,29 @@ class CourseExtension extends \Twig_Extension
 
     private function isOptionalTaskLesson($item)
     {
-        return in_array($item['itemType'], array('task', 'lesson')) && $item['isOptional'];
+        return in_array($item['itemType'], ['task', 'lesson']) && $item['isOptional'];
     }
 
     protected function getDiscountService()
     {
         return $this->biz->service('DiscountPlugin:Discount:DiscountService');
+    }
+
+    /**
+     * @return CertificateService
+     */
+    protected function getCertificateService()
+    {
+        return $this->biz->service('Certificate:CertificateService');
+    }
+
+    protected function isPluginInstalled($name)
+    {
+        return $this->container->get('kernel')->getPluginConfigurationManager()->isPluginInstalled($name);
+    }
+
+    protected function createService($alias)
+    {
+        return $this->biz->service($alias);
     }
 }

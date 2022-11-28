@@ -1,6 +1,5 @@
 import AttachmentActions from 'app/js/attachment/widget/attachment-actions';
 import EsWebUploader from 'common/es-webuploader';
-import notify from 'common/notify';
 
 let $form = $('#thread-form');
 let validator = $form.validate({
@@ -53,12 +52,12 @@ if (threadType == 'event') {
     $form.validate('[name=startTime]');
   });
   $form.find('[name="startTime"]').datetimepicker('setStartDate', new Date);
-  
+
   new EsWebUploader({
     element: '#js-activity-uploader',
     onUploadSuccess: function(file, response) {
       $form.find('[name=actvityPicture]').val(response.url);
-      notify('success', Translator.trans('site.upload_success_hint'));
+      cd.message({type: 'success', message: Translator.trans('site.upload_success_hint')});
     }
   });
 }

@@ -5,6 +5,8 @@ namespace QiQiuYun\SDK;
 use Psr\Log\LoggerInterface;
 use QiQiuYun\SDK\HttpClient\ClientInterface;
 use QiQiuYun\SDK\Exception\SDKException;
+use QiQiuYun\SDK\Service\NotificationService;
+use QiQiuYun\SDK\Service\PlatformNewsService;
 
 class QiQiuYunSDK
 {
@@ -105,6 +107,43 @@ class QiQiuYunSDK
     public function getAiService()
     {
         return $this->getService('Ai');
+    }
+
+    /**
+     * @return \QiQiuYun\SDK\Service\PushService
+     */
+    public function getPushService()
+    {
+        return $this->getService('Push');
+    }
+
+    /**
+     * @return NotificationService
+     */
+    public function getNotificationService()
+    {
+        return $this->getService('Notification');
+    }
+
+    public function getWeChatService()
+    {
+        return $this->getService('WeChat');
+    }
+
+    /**
+     * @return PlatformNewsService
+     */
+    public function getPlatformNewsService()
+    {
+        return $this->getService('PlatformNews');
+    }
+
+    /**
+    * @return \QiQiuYun\SDK\Service\S2B2CService
+    */
+    public function getS2B2CService()
+    {
+        return $this->getService('S2B2C');
     }
 
     /**

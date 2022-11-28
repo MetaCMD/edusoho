@@ -2,13 +2,15 @@
 
 namespace AppBundle\Component\Activity;
 
+use AppBundle\Common\Exception\UnexpectedValueException;
+
 class ActivityConfig implements \ArrayAccess
 {
-    private $config;
+    private $config = array();
 
     public function __construct($config)
     {
-        $this->config = $config;
+        $this->config = empty($config) ? array() : $config;
     }
 
     public function offsetExists($offset)
@@ -43,7 +45,7 @@ class ActivityConfig implements \ArrayAccess
         if (array_key_exists($name, $this->config)) {
             return $this->config[$name];
         }
-        throw new \RuntimeException("{$name} is not exist.");
+        throw new UnexpectedValueException("{$name} is not exist.");
     }
 
     public function __isset($name)

@@ -3,7 +3,7 @@
     <label class="control-label-required" for="title">{{ 'course.base.title'|trans }}</label>
   </div>
   <div class="col-md-8">
-    <input type="text" id="title" name="title" required="required" class="form-control js-courseset-title" value="{{ courseSet.title|default('') }}">
+    <input type="text" id="title" name="title" required="required" class="form-control js-courseset-title" value="{{ courseSet.title|default('')|html_special_chars_decode }}">
     <div class="help-block" style="display:none;"></div>
   </div>
 </div>
@@ -11,7 +11,7 @@
 <div class="form-group">
   <label class="col-md-2 control-label" for="subtitle">{{ 'course.base.sub_title'|trans }}</label>
   <div class="col-md-8">
-    <textarea id="subtitle" name="subtitle" class="form-control js-courseset-subtitle">{{ courseSet.subtitle|default('') }}</textarea>
+    <textarea id="subtitle" name="subtitle" class="form-control js-courseset-subtitle">{{ courseSet.subtitle|default('')|html_special_chars_decode }}</textarea>
     <div class="help-block" style="display:none;"></div>
   </div>
 </div>
@@ -30,7 +30,8 @@
   <label class="col-md-2 control-label" for="categoryId">{{ 'course.base.category'|trans }}</label>
   <div class="col-md-8 controls">
     <select id="categoryId" name="categoryId" class="form-control width-input width-input-large">
-      {{ select_options(category_choices('course'), courseSet.categoryId, 'course.base.category'|trans) }}
+      {% set course_category_choices = { 0: 'course.base.category'|trans } + category_choices('course') %}
+      {{ select_options(course_category_choices, courseSet.categoryId) }}
     </select>
     <div class="help-block" style="display:none;"></div>
   </div>
@@ -69,5 +70,6 @@
   <label class="col-md-2 control-label">{{'course.detail.summary'|trans}}</label>
   <div class="col-md-8 controls">
     <textarea name="summary" rows="10" data-form="{{ form }}" data-button="{{ button }}" id="courseset-summary-field" class="form-control" data-image-upload-url="{{ path('editor_upload', {token:upload_token('course')}) }}">{{ field_value(courseSet, 'summary') }}</textarea>
+    <div class="help-block">{{ 'editor.iframe_tips'|trans }}</div>
   </div>
 </div>

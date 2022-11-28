@@ -5,6 +5,7 @@ import LianlianpayWap from './lianlianpay_wap';
 import LianlianpayWeb from './lianlianpay_web';
 import WechatPayJs from './wechatpay_js';
 import WechatPayMweb from './wechatpay_mweb';
+import CoinPay from './coin_pay';
 import 'store';
 
 export default class PaySDK {
@@ -62,6 +63,9 @@ export default class PaySDK {
     case 'Lianlian_Web':
       paySdk = this.llwb ? this.llwb : this.llwb = new LianlianpayWeb();
       break;
+    case 'Coin':
+      paySdk = this.coin ? this.coin : this.coin = new CoinPay();
+      break;
     }
     return paySdk;
   }
@@ -70,7 +74,7 @@ export default class PaySDK {
     let gateway = '';
     switch (payment) {
     case 'wechat':
-      if (isWechat) {
+      if (isWechat && isMobile) {
         gateway = 'WechatPay_Js';
       } else if (isMobile) {
         gateway = 'WechatPay_MWeb';
@@ -92,6 +96,10 @@ export default class PaySDK {
       } else {
         gateway = 'Lianlian_Web';
       }
+      break;
+
+    case 'coin':
+      gateway = 'Coin';
       break;
     }
 

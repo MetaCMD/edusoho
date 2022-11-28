@@ -9,17 +9,19 @@ use ApiBundle\Api\Util\Money;
 
 class CourseSetFilter extends Filter
 {
-    protected $simpleFields = array(
-        'id', 'title', 'subtitle', 'summary', 'type', 'cover', 'studentNum', 'maxCoursePrice', 'minCoursePrice', 'discount', 'maxOriginPrice', 'minOriginPrice',
-    );
+    protected $simpleFields = [
+        'id', 'title', 'subtitle', 'summary', 'type', 'cover', 'studentNum', 'maxCoursePrice', 'minCoursePrice', 'discount', 'discountType', 'maxOriginPrice', 'minOriginPrice', 'status', 'defaultCourseId', 'goodsId', 'productId', 'course',
+    ];
 
-    protected $publicFields = array(
-        'tags', 'category', 'serializeMode', 'status', 'goals', 'audiences', 'ratingNum', 'rating', 'noteNum',
-        'recommended', 'recommendedSeq', 'recommendedTime', 'orgId', 'orgCode', 'discountId', 'discount', 'maxRate', 'hitNum', 'materialNum', 'parentId', 'locked', 'maxCoursePrice', 'minCoursePrice', 'teachers', 'creator', 'createdTime', 'updatedTime',
-    );
+    protected $publicFields = [
+        'tags', 'category', 'serializeMode', 'goals', 'audiences', 'ratingNum', 'rating', 'noteNum',
+        'recommended', 'recommendedSeq', 'recommendedTime', 'orgId', 'orgCode', 'discountId', 'discount', 'discountType', 'maxRate', 'hitNum', 'materialNum', 'parentId', 'locked', 'maxCoursePrice', 'minCoursePrice', 'teachers', 'creator', 'createdTime', 'updatedTime', 'goodsId', 'productId',
+    ];
 
     protected function simpleFields(&$data)
     {
+        $data['discount'] = strval(floatval($data['discount']));
+
         $data['summary'] = $this->convertAbsoluteUrl($data['summary']);
         $this->transformCover($data['cover']);
 
@@ -37,6 +39,8 @@ class CourseSetFilter extends Filter
 
     protected function publicFields(&$data)
     {
+        $data['discount'] = strval(floatval($data['discount']));
+
         $data['recommendedTime'] = date('c', $data['recommendedTime']);
 
         $userFilter = new UserFilter();

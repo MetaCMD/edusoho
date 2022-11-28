@@ -81,6 +81,104 @@ class CouponServiceTest extends BaseTestCase
         $notificationService->shouldHaveReceived('notify')->times(1);
     }
 
+    public function testGenerateMarketingCoupon()
+    {
+        $result = $this->getCouponService()->generateMarketingCoupon(123, 123, 1);
+
+        $this->assertEquals('minus', $result['type']);
+        $this->assertTrue(0 == strstr($result['code'], 'marketingCoupon'));
+    }
+
+    public function testGetCouponTargetByTargetTypeAndTargetIdNull()
+    {
+        $target = $this->getCouponService()->getCouponTargetByTargetTypeAndTargetId('', '');
+        $this->assertEmpty($target);
+        $target = $this->getCouponService()->getCouponTargetByTargetTypeAndTargetId('', 233);
+        $this->assertEmpty($target);
+        $target = $this->getCouponService()->getCouponTargetByTargetTypeAndTargetId('course', '');
+        $this->assertEmpty($target);
+    }
+
+    public function testgetCouponTargetByTargetTypeAndTargetId()
+    {
+        $course = array(
+            'id' => 233,
+            'title' => '测试课程',
+        );
+        $this->mockBiz(
+            'Course:CourseSetService',
+            array(
+                array(
+                    'functionName' => 'getCourseSet',
+                    'returnValue' => $course,
+                    'withParams' => array(
+                        $course['id'],
+                    ),
+                ),
+            )
+        );
+
+        $targetCourse = $this->getCouponService()->getCouponTargetByTargetTypeAndTargetId('course', $course['id']);
+        $this->assertEquals($course, $targetCourse);
+
+        $vipLevel = array(
+            'id' => 122,
+            'name' => '测试会员等级',
+            'seq' => 122,
+        );
+
+        $this->mockBiz(
+            'VipPlugin:Vip:LevelService',
+            array(
+                array(
+                    'functionName' => 'getLevel',
+                    'returnValue' => $vipLevel,
+                    'withParams' => array(
+                        $vipLevel['id'],
+                    ),
+                ),
+            )
+        );
+
+        $targetVipLevelEmpty = $this->getCouponService()->getCouponTargetByTargetTypeAndTargetId('vip', $vipLevel['id']);
+        $this->assertEmpty($targetVipLevelEmpty);
+
+        $this->mockBiz(
+            'CloudPlatform:AppService',
+            array(
+                array(
+                    'functionName' => 'getAppByCode',
+                    'returnValue' => true,
+                    'withParams' => array(
+                        'Vip',
+                    ),
+                ),
+            )
+        );
+        $targetVipLevel = $this->getCouponService()->getCouponTargetByTargetTypeAndTargetId('vip', $vipLevel['id']);
+        $this->assertEquals($vipLevel, $targetVipLevel);
+
+        $classroom = array(
+            'id' => 23123123,
+            'title' => '测试班级',
+            'status' => 'published',
+        );
+        $this->mockBiz(
+            'Classroom:ClassroomService',
+            array(
+                array(
+                    'functionName' => 'getClassroom',
+                    'returnValue' => $classroom,
+                    'withParams' => array(
+                        $classroom['id'],
+                    ),
+                ),
+            )
+        );
+        $targetClassroom = $this->getCouponService()->getCouponTargetByTargetTypeAndTargetId('classroom', $classroom['id']);
+        $this->assertEquals($classroom, $targetClassroom);
+    }
+
     public function testAddCoupon()
     {
         $coupon = array(
@@ -180,13 +278,85 @@ class CouponServiceTest extends BaseTestCase
         $this->mockBiz('System:SettingService', array(
             array('functionName' => 'get', 'returnValue' => array(
                 'invite_code_setting' => 1,
-                'promote_user_value' => 1,
+                'promote_user_enable' => 1,
+                'promote_user_batchId' => 1,
                 'deadline' => 2,
+            ),
+            ),
+        ));
+        $this->mockBiz('Coupon:CouponBatchService', array(
+            array(
+                'functionName' => 'getBatch',
+                'returnValue' => array(
+                    'id' => 1,
+                    'deadlineMode' => 'day',
+                    'fixedDay' => 1,
+                    'unreceivedNum' => 2,
                 ),
             ),
+            array(
+                'functionName' => 'updateUnreceivedNumByBatchId',
+            ),
+        ));
+        $this->mockBiz('Coupon:CouponDao', array(
+            array('functionName' => 'search', 'returnValue' => array(array('id' => 1))),
+            array('functionName' => 'update', 'returnValue' => array(
+                'id' => 1,
+                'status' => 'using',
+                'deadline' => 2,
+                'rate' => 1,
+                'type' => 'minus',
+                'code' => 'xxxxx',
+                'userId' => 1,
+            )),
         ));
 
         $result = $this->getCouponService()->generateInviteCoupon(1, 'pay');
+
+        $this->assertNotEmpty($result);
+        $this->assertEquals(1, $result['userId']);
+    }
+
+    public function testGenerateInviteCouponWithRegister()
+    {
+        $this->mockBiz('System:SettingService', array(
+            array('functionName' => 'get',
+                'returnValue' => array(
+                    'invite_code_setting' => 1,
+                    'promoted_user_enable' => 1,
+                    'promoted_user_batchId' => 1,
+                    'deadline' => 2,
+                ),
+            ),
+        ));
+        $this->mockBiz('Coupon:CouponBatchService', array(
+            array(
+                'functionName' => 'getBatch',
+                'returnValue' => array(
+                    'id' => 1,
+                    'deadlineMode' => 'day',
+                    'fixedDay' => 1,
+                    'unreceivedNum' => 2,
+                ),
+            ),
+            array(
+                'functionName' => 'updateUnreceivedNumByBatchId',
+            ),
+        ));
+        $this->mockBiz('Coupon:CouponDao', array(
+            array('functionName' => 'search', 'returnValue' => array(array('id' => 1))),
+            array('functionName' => 'update', 'returnValue' => array(
+                'id' => 1,
+                'status' => 'using',
+                'deadline' => 2,
+                'rate' => 1,
+                'type' => 'minus',
+                'code' => 'xxxxx',
+                'userId' => 1,
+            )),
+        ));
+
+        $result = $this->getCouponService()->generateInviteCoupon(1, 'register');
 
         $this->assertNotEmpty($result);
         $this->assertEquals(1, $result['userId']);
@@ -197,7 +367,8 @@ class CouponServiceTest extends BaseTestCase
         $this->mockBiz('System:SettingService', array(
             array('functionName' => 'get', 'returnValue' => array(
                 'invite_code_setting' => 1,
-                'promote_user_value' => 0,
+                'promote_user_enable' => 0,
+                'promote_user_batchId' => 0,
                 'deadline' => 2,
             ),
             ),
@@ -321,6 +492,11 @@ class CouponServiceTest extends BaseTestCase
             'deadline' => time(),
             'userId' => $this->getCurrentUser()->getId(),
         ));
+        $this->mockBiz('Coupon:CouponBatchService', array(
+           array(
+               'functionName' => 'updateUnreceivedNumByBatchId',
+           ),
+        ));
 
         $result = $this->getCouponService()->checkCouponUseable('x22232423', 'all', '0', '100');
 
@@ -365,6 +541,9 @@ class CouponServiceTest extends BaseTestCase
         $this->mockBiz('Course:CourseService', array(
             array('functionName' => 'getCourse', 'returnValue' => array('id' => 1, 'courseSetId' => 1)),
         ));
+        $this->mockBiz('System:SettingService', array(
+            array('functionName' => 'get', 'returnValue' => array('enabled' => 1)),
+        ));
         $coupon = array(
             'code' => 'x22232423',
             'type' => 'minus',
@@ -386,6 +565,9 @@ class CouponServiceTest extends BaseTestCase
     {
         $this->mockBiz('Course:CourseService', array(
             array('functionName' => 'getCourse', 'returnValue' => array('id' => 1, 'courseSetId' => 1)),
+        ));
+        $this->mockBiz('System:SettingService', array(
+            array('functionName' => 'get', 'returnValue' => array('enabled' => 1)),
         ));
         $coupon = array(
             'code' => 'x22232423',
@@ -410,6 +592,9 @@ class CouponServiceTest extends BaseTestCase
         $this->mockBiz('Course:CourseService', array(
             array('functionName' => 'getCourse', 'returnValue' => array('id' => 1, 'courseSetId' => 1)),
         ));
+        $this->mockBiz('System:SettingService', array(
+            array('functionName' => 'get', 'returnValue' => array('enabled' => 1)),
+        ));
         $coupon = array(
             'code' => 'x22232423',
             'type' => 'minus',
@@ -433,6 +618,9 @@ class CouponServiceTest extends BaseTestCase
         $this->mockBiz('Course:CourseService', array(
             array('functionName' => 'getCourse', 'returnValue' => array('id' => 1, 'courseSetId' => 1)),
         ));
+        $this->mockBiz('System:SettingService', array(
+            array('functionName' => 'get', 'returnValue' => array('enabled' => 1)),
+        ));
         $coupon = array(
             'code' => 'x22232423',
             'type' => 'minus',
@@ -455,6 +643,12 @@ class CouponServiceTest extends BaseTestCase
     {
         $this->mockBiz('Course:CourseService', array(
             array('functionName' => 'getCourse', 'returnValue' => array('id' => 1, 'courseSetId' => 1)),
+        ));
+        $this->mockBiz('System:SettingService', array(
+            array('functionName' => 'get', 'returnValue' => array('enabled' => 1)),
+        ));
+        $this->mockBiz('Coupon:CouponBatchService', array(
+            array('functionName' => 'updateUnreceivedNumByBatchId'),
         ));
         $coupon = array(
             'code' => 'x22232423',

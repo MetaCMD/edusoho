@@ -5,6 +5,8 @@ namespace ApiBundle\Api\Resource\Me;
 use ApiBundle\Api\ApiRequest;
 use ApiBundle\Api\Resource\AbstractResource;
 use ApiBundle\Api\Util\AssetHelper;
+use Biz\System\Service\SettingService;
+use Codeages\Biz\Pay\Service\AccountService;
 
 class Me extends AbstractResource
 {
@@ -38,17 +40,25 @@ class Me extends AbstractResource
             $vip = $this->service('VipPlugin:Vip:VipService')->getMemberByUserId($user['id']);
             $level = $this->service('VipPlugin:Vip:LevelService')->getLevel($vip['levelId']);
             if ($vip) {
-                $user['vip'] = array(
+                $user['vip'] = [
                     'levelId' => $vip['levelId'],
                     'vipName' => $level['name'],
                     'deadline' => date('c', $vip['deadline']),
                     'seq' => $level['seq'],
                     'icon' => empty($level['icon']) ? AssetHelper::uriForPath('/assets/v2/img/vip/vip_icon_bronze.png') : AssetHelper::uriForPath($level['icon']),
-                );
+                ];
             } else {
                 $user['vip'] = null;
             }
         }
+
+        $storageSetting = $this->getSettingService()->get('storage');
+        if (isset($storageSetting['video_fingerprint_content'])) {
+            $fingerPrint = $this->getWebExtension()->getFingerprint();
+            $user['fingerPrintSetting']['video_fingerprint_content'] = substr($fingerPrint, strpos($fingerPrint, '>') + 1, strrpos($fingerPrint, '<') - strlen($fingerPrint));
+        }
+
+        $user['havePayPassword'] = $this->getAccountService()->isPayPasswordSetted($user['id']) ? 1 : -1;
 
         return $user;
     }
@@ -56,5 +66,21 @@ class Me extends AbstractResource
     protected function getUserService()
     {
         return $this->service('User:UserService');
+    }
+
+    /**
+     * @return AccountService
+     */
+    private function getAccountService()
+    {
+        return $this->service('Pay:AccountService');
+    }
+
+    /**
+     * @return SettingService
+     */
+    private function getSettingService()
+    {
+        return $this->service('System:SettingService');
     }
 }

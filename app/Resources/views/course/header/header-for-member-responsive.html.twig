@@ -2,7 +2,7 @@
   <ul class="clearfix">
     <!--营销页显示-->
     {% if marketingPage %}
-    <li class="js-unfavorite-btn" id="unfavorite-btn" data-url="{{ path('course_set_unfavorite', {id: course.courseSetId }) }}"
+    <li class="js-unfavorite-btn" id="unfavorite-btn" data-target-type="course" data-target-id="{{ course.courseSetId }}"
       {% if not isUserFavorite %}style="display: none" {% endif %}>
       <a class="color-primary" href="javascript:;" data-toggle="tooltip" data-placement="top" title="{{ 'course.status.followed'|trans }}"
         data-trigger="hover">
@@ -11,7 +11,7 @@
         {{ 'course.status.followed'|trans }}
       </a>
     </li>
-    <li class="js-favorite-btn" id="favorite-btn" data-url="{{ path('course_set_favorite', {id: course.courseSetId }) }}"
+    <li class="js-favorite-btn" id="favorite-btn" data-target-type="course" data-target-id="{{ course.courseSetId }}"
     {% if isUserFavorite %}style="display: none"{% endif %}>
     <a class="" href="javascript:;" data-toggle="tooltip" data-placement="top" title="{{ 'course.status.follow'|trans }}"
         data-trigger="hover">
@@ -21,7 +21,7 @@
     </a>
     </li>
     {% endif %}
-    <li class="es-share top  {% if not marketingPage %} learn-es-share {% endif %}">
+    <li class="es-share top  js-es-share{% if not marketingPage %} learn-es-share {% endif %}">
       <a class=" dropdown-toggle" href="" data-toggle="dropdown" title="{{ 'course.share'|trans }}">
         <i class="es-icon es-icon-share"></i>
         <br/>
@@ -29,6 +29,7 @@
       </a>
       {% include 'common/share-dropdown.html.twig' with {type:'courseSet'} %}
     </li>
+     {% include 'common/wechat-subscribe-new.html.twig' %}
     {{ slot('course.header-marketing-btn.extension', {'course': course,'mobile': true}) }}
   </ul>
 </div>

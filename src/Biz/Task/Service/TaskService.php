@@ -63,19 +63,23 @@ interface TaskService
 
     public function findTasksByCourseSetId($courseSetId);
 
+    public function findTasksByCategoryIds($categoryIds);
+
     public function findTasksByCourseIds($courseIds);
+
+    public function findTasksByCourseIdAndType($courseId, $type);
 
     public function countTasksByCourseId($courseId);
 
     public function findTasksByActivityIds($activityIds);
 
-    public function searchTasks($conditions, $orderBy, $start, $limit);
+    public function searchTasks($conditions, $orderBy, $start, $limit, $columns = []);
+
+    public function findTestpapers($tasks, $type);
 
     public function countTasks($conditions);
 
     /**
-     * @param array $ids
-     *
      * @return array
      */
     public function findTasksByIds(array $ids);
@@ -110,7 +114,7 @@ interface TaskService
 
     public function tryTakeTask($taskId);
 
-    public function trigger($id, $eventName, $data = array());
+    public function trigger($id, $eventName, $data = []);
 
     /**
      * return next Task that can be learned of the  course plan, or return empty array().
@@ -164,15 +168,6 @@ interface TaskService
     public function setTaskMaxOnlineNum($taskId, $maxNum);
 
     /**
-     * 统计当前时间以后每天的直播次数.
-     *
-     * @param  $limit
-     *
-     * @return array <string, int|string>
-     */
-    public function findFutureLiveDates($limit = 4);
-
-    /**
      * 返回当前正在直播的直播任务
      *
      * @return array
@@ -222,11 +217,6 @@ interface TaskService
 
     public function getTaskByCourseIdAndActivityId($courseId, $activityId);
 
-    /**
-     * 获得课程的总学习时间.
-     */
-    public function sumCourseSetLearnedTimeByCourseSetId($courseSetId);
-
     public function analysisTaskDataByTime($startTime, $endTime);
 
     /**
@@ -247,4 +237,14 @@ interface TaskService
     public function countTasksByChpaterId($chapterId);
 
     public function updateTasksOptionalByLessonId($lessonId, $isOptional = 0);
+
+    public function countLessonsWithMultipleTasks($courseId);
+
+    public function getUserCurrentPublishedLiveTask($userId, $startTime, $endBeforeRange);
+
+    public function canStartTask($taskId);
+
+    public function searchTasksWithStatistics(array $conditions, $orderBy, $start, $limit);
+
+    public function findTasksByCopyIdAndLockedCourseIds($copyId, $courseIds);
 }

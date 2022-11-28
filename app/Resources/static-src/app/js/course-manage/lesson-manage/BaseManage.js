@@ -1,4 +1,6 @@
 import sortList from 'common/sortable';
+import notify from 'common/notify';
+
 
 export default class Manage {
   constructor(element) {
@@ -36,19 +38,28 @@ export default class Manage {
     ];
     this.$element.on('click', '.js-toggle-show', (event) => {
       let $this = $(event.currentTarget);
-      $this.toggleClass('toogle-hide');
       let $chapter = $this.closest('.task-manage-item');
       let until = $chapter.hasClass('js-task-manage-chapter') ? '.js-task-manage-chapter' : '.js-task-manage-chapter,.js-task-manage-unit';
       let $hideElements = $chapter.nextUntil(until);
+      const lastStatusIsHidden = $this.hasClass('toogle-hide') // 上一个状态是否是隐藏
 
       if ($this.hasClass('js-toggle-unit')) {
-        $hideElements.toggleClass('unit-hide');
-      } else {
+        if (lastStatusIsHidden) {
+          $hideElements.removeClass('unit-hide');
+        } else {
+          $hideElements.addClass('unit-hide');
+        }
+      } else if ($this.hasClass('js-toggle-chapter')) {
         $hideElements = $hideElements.not('.unit-hide');
       }
+      
+      $hideElements = $hideElements.filter((index, dom) => {
+        const isHidden = $(dom).css('display') === 'none'
 
+        return lastStatusIsHidden === isHidden
+      })
       $hideElements.stop().animate({ height: 'toggle', opacity: 'toggle' }, 'fast');
-      $this.hasClass('toogle-hide') ? $this.html(collapseTexts[0]) : $this.html(collapseTexts[1]);
+      $this.toggleClass('toogle-hide').hasClass('toogle-hide') ? $this.html(collapseTexts[0]) : $this.html(collapseTexts[1]);
     });
   }
 
@@ -100,6 +111,7 @@ export default class Manage {
 
     this.handleEmptyShow();
     this._flushTaskNumber();
+    this._flushPublishLessonNum();
     this.clearPosition();
     this.afterAddItem($elm);
   }
@@ -131,7 +143,9 @@ export default class Manage {
         self._triggerAsTaskNumUpdated(container);
         self.handleEmptyShow();
         self._flushTaskNumber();
+        self._flushPublishLessonNum();
         $.post($this.data('url'), function(data) {
+          notify('success', Translator.trans('site.delete_success_hint'));
           self.sortList();
         });
       });
@@ -149,22 +163,27 @@ export default class Manage {
   _sort() {
     // 拖动，及拖动规则
     let self = this;
+    let $childrens = null;
     let adjustment;
     sortList({
       element: self.$element,
       ajax: false,
       group: 'nested',
+      exclude: '.drag_cancel',
       placeholder: '<li class="placeholder task-dragged-placeholder"></li>',
       isValidTarget: function($item, container) {
         return self._sortRules($item, container);
       },
       onDragStart: function(item, container, _super) {
-        let offset = item.offset(),
-          pointer = container.rootGroup.pointer;
+        let offset = item.offset();
+        let pointer = container.rootGroup.pointer;
+
         adjustment = {
           left: pointer.left - offset.left,
           top: pointer.top - offset.top
         };
+
+        $childrens = self.getChildrens(item)
         _super(item, container);
       },
       onDrag: function(item, position) {
@@ -178,9 +197,45 @@ export default class Manage {
           top: position.top - adjustment.top
         });
       },
-    }, (data) => {
-      self.sortList();
+      onDrop: function(item, container, _super) {
+        _super(item, container);
+
+        let $next = item
+        while ($next.next().css('display') === 'none') {
+          $next = $next.next()
+        }
+
+        $next.after(item)
+        if ($childrens) {
+          item.after($childrens)
+          $childrens = null
+        }
+
+        self.sortList();
+      }
     });
+  }
+
+  getChildrens (item) {
+    const isHidden = item.find('.js-toggle-show.toogle-hide').length > 0
+
+    if (!isHidden) return null
+
+    let $childrens = null
+
+    if (item.hasClass('js-task-manage-chapter')) {
+      $childrens = item.nextUntil('.js-task-manage-chapter')
+    } else if (item.hasClass('js-task-manage-unit')) {
+      $childrens = item.nextUntil('.js-task-manage-unit,.js-task-manage-chapter');
+    }
+    
+    if ($childrens) {
+      $childrens = $childrens.filter(index => {
+        return $childrens.eq(index).css('display') === 'none'
+      })
+    }
+
+    return $childrens
   }
 
   _sortRules($item, container) {
@@ -214,10 +269,15 @@ export default class Manage {
   sortList() {
     // 后台排序seq值
     let ids = [];
+    let self = this;
     this.$element.find('.task-manage-item').each(function() {
       ids.push($(this).attr('id'));
     });
-    $.post(this.$element.data('sortUrl'), { ids: ids }, (response) => {});
+    $.post(this.$element.data('sortUrl'), { ids: ids }, (response) => {
+      if (self.$element.data('multiClass')) {
+        window.location.reload();
+      }
+    });
     this.sortablelist();
   }
 
@@ -289,6 +349,13 @@ export default class Manage {
 
     let num = $('.js-settings-item.active').length;
     this.$taskNumber.text(num);
+  }
+
+  _flushPublishLessonNum() {
+    let lessonNum = $('.js-settings-item.active').length;
+    let publishedLessonNum = $('.js-lesson-unpublish-status.hidden').length;
+    let content = Translator.trans('course.plan_task.lessons_publish_status', {'publishedNum':publishedLessonNum, 'unpublishedNum': lessonNum - publishedLessonNum});
+    $('.js-lessons-publish-status').attr('data-content', content);
   }
 
   _createTask() {
@@ -373,26 +440,25 @@ export default class Manage {
         setProperty = self.checkShouldSetProperty($target, $parentLi);
       }
 
-      $dom.toggleClass('hidden');
-      $oppositeDom.toggleClass('hidden');
-
-      if (isHideUnPublish) {
-        if (setProperty) {
-          const $displayTextDom = $parentLi.find('.display-text');
-          $displayTextDom.toggleClass('hidden');
-          self.setShowNum($parentLi);
-          self.sortList();
-        }
-      } else {
-        if (info.flag) {
-          const $displayTextDom = $parentLi.find('.display-text');
-          $displayTextDom.toggleClass('hidden');
-          self.setShowNum($parentLi);
-          self.sortList();
-        }
+      if (data.success) {
+        $dom.toggleClass('hidden');
+        $oppositeDom.toggleClass('hidden');
       }
 
-      cd.message({ type: 'success', message: info.success });
+      if (isHideUnPublish && setProperty || !isHideUnPublish && info.flag) {
+        const $displayTextDom = $parentLi.find('.display-text');
+        $displayTextDom.toggleClass('hidden');
+        self.setShowNum($parentLi);
+        self.sortList();
+      }
+      
+      if (data.success) {
+        this._flushPublishLessonNum();
+        cd.message({ type: 'success', message: info.success });
+      } else {
+        cd.message({ type: 'danger', message: info.danger + data.message});
+      }
+
     }).fail(function(data) {
       cd.message({ type: 'danger', message: info.danger + data.responseJSON.error.message });
     });

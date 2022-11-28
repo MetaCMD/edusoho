@@ -2,16 +2,19 @@
 
 namespace ApiBundle\Api\Resource\Page;
 
-use ApiBundle\Api\Resource\Course\CourseFilter;
 use ApiBundle\Api\Resource\Classroom\ClassroomFilter;
 use ApiBundle\Api\Resource\Coupon\CouponFilter;
-use VipPlugin\Api\Resource\VipLevel\VipLevelFilter;
+use ApiBundle\Api\Resource\Course\CourseFilter;
 use ApiBundle\Api\Resource\Filter;
+use ApiBundle\Api\Resource\ItemBankExercise\ItemBankExerciseFilter;
 use ApiBundle\Api\Resource\MarketingActivity\MarketingActivityFilter;
+use ApiBundle\Api\Resource\OpenCourse\OpenCourseFilter;
+use ApiBundle\Api\Util\AssetHelper;
+use VipPlugin\Api\Resource\VipLevel\VipLevelFilter;
 
 class PageDiscoveryFilter extends Filter
 {
-    protected $publicFields = array('type', 'data', 'moduleType');
+    protected $publicFields = ['type', 'data', 'moduleType', 'tips'];
 
     protected function publicFields(&$data)
     {
@@ -64,10 +67,48 @@ class PageDiscoveryFilter extends Filter
             }
         }
 
-        if (in_array($data['type'], array('cut', 'seckill', 'groupon'))) {
+        if ('slide_show' == $data['type']) {
+            foreach ($data['data'] as &$slide) {
+                if (false === strpos($slide['image']['uri'], 'http://') && false === strpos($slide['image']['uri'], 'https://')) {
+                    $slide['image']['uri'] = AssetHelper::uriForPath($slide['image']['uri']);
+                }
+            }
+        }
+
+        if (in_array($data['type'], ['cut', 'seckill', 'groupon'])) {
             $marketingActivityFilter = new MarketingActivityFilter();
             $marketingActivityFilter->setMode(Filter::SIMPLE_MODE);
             $marketingActivityFilter->filter($data['data']['activity']);
+        }
+
+        if ('open_course_list' == $data['type']) {
+            $courseFilter = new OpenCourseFilter();
+            $courseFilter->setMode(Filter::PUBLIC_MODE);
+            foreach ($data['data']['items'] as &$course) {
+                $courseFilter->filter($course);
+            }
+        }
+
+        if ('graphic_navigation' == $data['type']) {
+            foreach ($data['data'] as &$navigation) {
+                if (empty($navigation['image']) || empty($navigation['link'])) {
+                    continue;
+                }
+
+                if (!empty($navigation['image']['url'])) {
+                    continue;
+                }
+
+                $default = 'course' == $navigation['link']['type'] ? 'hot_course.png' : ('openCourse' == $navigation['link']['type'] ? 'open_course.png' : 'hot_classroom.png');
+                $navigation['image']['url'] = AssetHelper::getFurl('', $default);
+            }
+        }
+
+        if ('item_bank_exercise' == $data['type']) {
+            $itemBankExerciseFilter = new ItemBankExerciseFilter();
+            foreach ($data['data']['items'] as &$itemBankExercise) {
+                $itemBankExerciseFilter->filter($itemBankExercise);
+            }
         }
     }
 }

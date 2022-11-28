@@ -6,9 +6,10 @@ use AppBundle\Common\TimeMachine;
 use AppBundle\Component\RateLimit\LoginFailRateLimiter;
 use AppBundle\Component\RateLimit\RegisterRateLimiter;
 use AppBundle\Controller\LoginBindController;
+use Biz\Common\BizSms;
 use Biz\Common\CommonException;
 use Biz\Distributor\Util\DistributorCookieToolkit;
-use Biz\Common\BizSms;
+use Biz\User\UserException;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
@@ -18,9 +19,9 @@ class LoginController extends LoginBindController
     {
         $oauthUser = $this->getOauthUser($request);
 
-        return $this->render('oauth2/index.html.twig', array(
+        return $this->render('oauth2/index.html.twig', [
             'oauthUser' => $oauthUser,
-        ));
+        ]);
     }
 
     public function appAction(Request $request)
@@ -31,7 +32,7 @@ class LoginController extends LoginBindController
         $os = $request->query->get('os');
         $appid = $request->query->get('appid');
 
-        if (!in_array($os, array('iOS', 'Android'))) {
+        if (!in_array($os, ['iOS', 'Android'])) {
             $this->createNewException(CommonException::ERROR_PARAMETER());
         }
 
@@ -74,29 +75,30 @@ class LoginController extends LoginBindController
             $password = $request->request->get('password');
 
             $this->loginAttemptCheck($oauthUser->account, $request);
+            $token = $request->getSession()->get('oauth_token');
 
-            $isSuccess = $this->bindUser($oauthUser, $password);
+            $isSuccess = $this->bindUser($oauthUser, $password, $token);
 
             return $isSuccess ?
-                $this->createSuccessJsonResponse(array('url' => $this->generateUrl('oauth2_login_success'))) :
-                $this->createFailJsonResponse(array('message' => $this->trans('user.settings.security.password_modify.incorrect_password')));
+                $this->createSuccessJsonResponse(['url' => $this->generateUrl('oauth2_login_success')]) :
+                $this->createFailJsonResponse(['message' => $this->trans('user.settings.security.password_modify.incorrect_password')]);
         } else {
             $user = $this->getUserByTypeAndAccount($oauthUser->accountType, $oauthUser->account);
 
-            return $this->render('oauth2/bind-login.html.twig', array(
+            return $this->render('oauth2/bind-login.html.twig', [
                 'oauthUser' => $oauthUser,
                 'esUser' => $user,
-            ));
+            ]);
         }
     }
 
-    protected function bindUser(OAuthUser $oauthUser, $password)
+    protected function bindUser(OAuthUser $oauthUser, $password, $token)
     {
         $user = $this->getUserByTypeAndAccount($oauthUser->accountType, $oauthUser->account);
 
         $isCorrectPassword = $this->getUserService()->verifyPassword($user['id'], $password);
         if ($isCorrectPassword) {
-            $this->getUserService()->bindUser($oauthUser->type, $oauthUser->authid, $user['id'], null);
+            $this->getUserService()->bindUser($oauthUser->type, $oauthUser->authid, $user['id'], $token);
             $this->authenticatedOauthUser();
 
             return true;
@@ -126,11 +128,13 @@ class LoginController extends LoginBindController
         if ($oauthUser->isApp()) {
             $request->getSession()->set(OAuthUser::SESSION_SKIP_KEY, true);
             $token = $this->getUserService()->makeToken('mobile_login', $user['id'], time() + TimeMachine::ONE_MONTH);
+            if ('h5' == $oauthUser->os) {
+                $this->authenticateUser($user);
+            }
         } else {
             $token = null;
+            $this->authenticateUser($user);
         }
-
-        $this->authenticateUser($user);
 
         $isNewAccount = $oauthUser->isNewAccount;
         if ($isNewAccount && !empty($oauthUser->avatar)) {
@@ -139,11 +143,11 @@ class LoginController extends LoginBindController
 
         $request->getSession()->set(OAuthUser::SESSION_KEY, null);
 
-        return $this->render('oauth2/success.html.twig', array(
+        return $this->render('oauth2/success.html.twig', [
             'oauthUser' => $oauthUser,
             'token' => $token,
             'isNewAccount' => $isNewAccount,
-        ));
+        ]);
     }
 
     public function createAction(Request $request)
@@ -154,39 +158,146 @@ class LoginController extends LoginBindController
             $validateResult = $this->validateRegisterRequest($request);
 
             if ($validateResult['hasError']) {
-                return $this->createFailJsonResponse(array('msg' => $validateResult['msg']));
+                return $this->createFailJsonResponse(['msg' => $validateResult['msg']]);
             }
 
+            $bindMobile = $request->request->get('originalMobileAccount', '');
+            $oauthUser->captchaEnabled = $bindMobile && OAuthUser::MOBILE_TYPE != $oauthUser->accountType ? false : $oauthUser->captchaEnabled;
             $this->registerAttemptCheck($request);
-            $this->register($request);
+
+            if ($request->request->get('originalEmailAccount', '') && $request->request->get('originalAccountPassword', '')) {
+                $this->bindOriginalEmailAccount($request);
+            } else {
+                $originMobileUser = $this->getUserService()->getUserByVerifiedMobile($bindMobile);
+                if ($originMobileUser && $request->request->get('accountSmsCode')) {
+                    $this->bindOriginalMobileAccount($request);
+                } else {
+                    $this->register($request);
+                }
+            }
             $this->authenticatedOauthUser();
 
-            $response = $this->createSuccessJsonResponse(array('url' => $this->generateUrl('oauth2_login_success')));
+            $response = $this->createSuccessJsonResponse(['url' => $this->generateUrl('oauth2_login_success')]);
             $response = DistributorCookieToolkit::clearCookieToken(
                 $request,
                 $response,
-                array('checkedType' => DistributorCookieToolkit::USER)
+                ['checkedType' => DistributorCookieToolkit::USER]
             );
 
             return $response;
         } else {
             $request->getSession()->set(OAuthUser::SESSION_KEY, $oauthUser);
             $invitedCode = $this->get('session')->get('invitedCode');
-            $inviteUser = empty($invitedCode) ? array() : $this->getUserService()->getUserByInviteCode($invitedCode);
+            $inviteUser = empty($invitedCode) ? [] : $this->getUserService()->getUserByInviteCode($invitedCode);
 
-            return $this->render('oauth2/create-account.html.twig', array(
+            return $this->render('oauth2/create-account.html.twig', [
                 'oauthUser' => $oauthUser,
                 'inviteUser' => $inviteUser,
                 'captchaStatus' => $this->getUserService()->getSmsRegisterCaptchaStatus($request->getClientIp()),
-            ));
+            ]);
         }
+    }
+
+    protected function bindOriginalEmailAccount(Request $request)
+    {
+        $oauthUser = $this->getOauthUser($request);
+        $registerFields = $request->request->all();
+        $originalEmailAccount = $request->request->get('originalEmailAccount');
+        $originalAccountPassword = $request->request->get('originalAccountPassword');
+
+        $user = $this->getUserService()->getUserByEmail($originalEmailAccount);
+        if (!$user || !empty($user['verifiedMobile'])) {
+            throw UserException::FORBIDDEN_REGISTER();
+        }
+
+        $validatePassed = $this->getAuthService()->checkPassword($user['id'], $originalAccountPassword);
+        if (!$validatePassed) {
+            throw UserException::EMAIL_PASSWORD_ERROR();
+        } else {
+            $this->loginAttemptCheck($oauthUser->account, $request);
+            $token = $request->getSession()->get('oauth_token');
+            $this->getUserService()->bindUser($oauthUser->type, $oauthUser->authid, $user['id'], $token);
+            $registerFields['nickname'] && $this->getUserService()->changeNickname($user['id'], $registerFields['nickname']);
+            $this->getUserService()->changeMobile($user['id'], $oauthUser->account);
+            $this->getUserService()->initPassword($user['id'], $registerFields['password']);
+        }
+    }
+
+    protected function bindOriginalMobileAccount(Request $request)
+    {
+        $oauthUser = $this->getOauthUser($request);
+        $registerFields = $request->request->all();
+        $originalMobileAccount = $request->request->get('originalMobileAccount');
+
+        $user = $this->getUserService()->getUserByVerifiedMobile($originalMobileAccount);
+        if (!$user || (!empty($user['email'] && $user['emailVerified']))) {
+            throw UserException::FORBIDDEN_REGISTER();
+        }
+
+        $this->loginAttemptCheck($oauthUser->account, $request);
+        $token = $request->getSession()->get('oauth_token');
+        $this->getUserService()->bindUser($oauthUser->type, $oauthUser->authid, $user['id'], $token);
+        $registerFields['nickname'] && $this->getUserService()->changeNickname($user['id'], $registerFields['nickname']);
+        $this->getUserService()->changeEmail($user['id'], $oauthUser->account);
+        $this->getUserService()->initPassword($user['id'], $registerFields['password']);
+    }
+
+    public function OriginalAccountCheckAction(Request $request, $type)
+    {
+        $account = $request->query->get('value');
+
+        return 'mobile' == $type ? $this->checkMobile($account) : $this->checkEmail($account);
+    }
+
+    protected function checkMobile($mobile)
+    {
+        $bindMode = $this->getSettingService()->node('login_bind.mobile_bind_mode', 'constraint');
+
+        if ('constraint' == $bindMode && empty($mobile)) {
+            return $this->validateResult('false', '请输入手机号');
+        }
+
+        if ('constraint' != $bindMode && empty($mobile)) {
+            return $this->validateResult('success', '');
+        }
+
+        $user = $this->getUserService()->getUserByVerifiedMobile($mobile);
+        if ($user && !empty($user['email']) && $user['emailVerified']) {
+            return $this->validateResult('false', '该手机账号已绑定邮箱');
+        }
+
+        return $this->validateResult('success', '');
+    }
+
+    protected function checkEmail($email)
+    {
+        $user = $this->getUserService()->getUserByEmail($email);
+        if (empty($user)) {
+            return $this->validateResult('false', '该邮箱帐号不存在');
+        }
+
+        if (!empty($user['verifiedMobile'])) {
+            return $this->validateResult('false', '该邮箱帐号已绑定手机号');
+        }
+
+        return $this->validateResult('success', '');
+    }
+
+    protected function validateResult($result, $message)
+    {
+        $response = true;
+        if ('success' !== $result) {
+            $response = $message;
+        }
+
+        return $this->createJsonResponse($response);
     }
 
     protected function validateRegisterRequest(Request $request)
     {
-        $validateResult = array(
+        $validateResult = [
             'hasError' => false,
-        );
+        ];
 
         $this->validateRegisterType($request);
 
@@ -195,6 +306,16 @@ class LoginController extends LoginBindController
             $smsToken = $request->request->get('smsToken');
             $mobile = $request->request->get(OAuthUser::MOBILE_TYPE);
             $smsCode = $request->request->get('smsCode');
+            $status = $this->getBizSms()->check(BizSms::SMS_BIND_TYPE, $mobile, $smsToken, $smsCode);
+
+            $validateResult['hasError'] = BizSms::STATUS_SUCCESS !== $status;
+            $validateResult['msg'] = $status;
+        }
+
+        if ($request->request->get('originalMobileAccount') && $request->request->get('accountSmsCode')) {
+            $smsToken = $request->request->get('smsToken');
+            $mobile = $request->request->get('originalMobileAccount');
+            $smsCode = $request->request->get('accountSmsCode');
             $status = $this->getBizSms()->check(BizSms::SMS_BIND_TYPE, $mobile, $smsToken, $smsCode);
 
             $validateResult['hasError'] = BizSms::STATUS_SUCCESS !== $status;
@@ -218,7 +339,7 @@ class LoginController extends LoginBindController
     protected function register(Request $request)
     {
         $oauthUser = $this->getOauthUser($request);
-        $registerFields = array(
+        $registerFields = [
             'nickname' => $request->request->get('nickname'),
             'password' => $request->request->get('password'),
             'invitedCode' => $request->request->get('invitedCode'),
@@ -228,11 +349,17 @@ class LoginController extends LoginBindController
             'registeredWay' => $oauthUser->isApp() ? strtolower($oauthUser->os) : 'web',
             'authid' => $oauthUser->authid,
             'createdIp' => $request->getClientIp(),
-        );
+            'registerVisitId' => $request->request->get('registerVisitId', ''), // 支持统计分析注册标识,比如:nuwa
+        ];
 
         if (OAuthUser::MOBILE_TYPE == $oauthUser->accountType) {
-            $registerFields['verifiedMobile'] = $oauthUser->account;
+            $registerFields['mobile'] = $registerFields['verifiedMobile'] = $oauthUser->account;
             $registerFields['email'] = $this->getUserService()->generateEmail($registerFields);
+        }
+
+        $bindMobile = $request->request->get('originalMobileAccount');
+        if (OAuthUser::EMAIL_TYPE == $oauthUser->accountType && $bindMobile) {
+            $registerFields['verifiedMobile'] = $bindMobile;
         }
 
         $registerFields = DistributorCookieToolkit::setCookieTokenToFields($request, $registerFields, DistributorCookieToolkit::USER);
@@ -278,8 +405,6 @@ class LoginController extends LoginBindController
     }
 
     /**
-     * @param \Symfony\Component\HttpFoundation\Request $request
-     *
      * @return \AppBundle\Controller\OAuth2\OAuthUser
      */
     protected function getOauthUser(Request $request)

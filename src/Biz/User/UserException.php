@@ -6,7 +6,7 @@ use AppBundle\Common\Exception\AbstractException;
 
 class UserException extends AbstractException
 {
-    const EXCEPTION_MODUAL = 01;
+    const EXCEPTION_MODULE = 01;
 
     const UN_LOGIN = 4040101;
 
@@ -37,6 +37,8 @@ class UserException extends AbstractException
     const LOCKED_USER = 4030115;
 
     const PASSWORD_ERROR = 5000116;
+
+    const PASSWORD_FAILED = 5000117;
 
     const NOTFOUND_TOKEN = 4040117;
 
@@ -90,9 +92,21 @@ class UserException extends AbstractException
 
     const LOCK_SELF_DENIED = 4030142;
 
+    const FILE_PERMISSION_DENIED = 4030145;
+
+    const DELETE_USER_PERMISSION_DENIED = 4030146;
+
     const DATEFIELD_INVALID = 5000143;
 
-    public $messages = array(
+    const WEIXIN_INVALID = 5000144;
+
+    const MOBILE_NOT_FOUND = 4040119;
+
+    const USER_IS_DESTROYED = 4040120;
+
+    const EMAIL_PASSWORD_ERROR = 4040121;
+
+    public $messages = [
         4040101 => 'exception.user.unlogin',
         4030102 => 'exception.user.login_limit',
         4030103 => 'exception.user.register_error',
@@ -108,6 +122,7 @@ class UserException extends AbstractException
         4030114 => 'exception.user.permission_denied',
         4030115 => 'exception.user.lock',
         5000116 => 'exception.user.password_error',
+        5000117 => 'exception.user.password_failed',
         4040117 => 'exception.user.token_not_found',
         4040118 => 'exception.user.no_user_provider',
         5000119 => 'exception.user.email_invalid',
@@ -135,5 +150,11 @@ class UserException extends AbstractException
         5000141 => 'exception.user.not_match_bind_email',
         4030142 => 'exception.user.lock_self_denied',
         5000143 => 'exception.user.datefield_invalid',
-    );
+        5000144 => 'exception.user.weixin_invalid',
+        4030145 => 'exception.user.file_permission_denied',
+        4030146 => 'exception.user.delete_user_permission_denied',
+        4040119 => 'exception.user.mobile_not_found',
+        4040120 => 'exception.user.user_is_destroyed',
+        4040121 => 'exception.user.email_password_error',
+    ];
 }

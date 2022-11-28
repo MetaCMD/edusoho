@@ -8,6 +8,7 @@ use Codeages\Biz\Framework\Service\Exception\AccessDeniedException;
 use Codeages\Biz\Framework\Service\Exception\InvalidArgumentException;
 use Codeages\Biz\Framework\Service\Exception\NotFoundException;
 use Codeages\Biz\Framework\Service\Exception\ServiceException;
+use Codeages\Biz\Framework\Validator\Validator;
 
 abstract class BaseService
 {
@@ -87,5 +88,13 @@ abstract class BaseService
     protected function createServiceException($message = '', $code = 0)
     {
         return new ServiceException($message, $code);
+    }
+
+    /**
+     * @return Validator
+     */
+    protected function getValidator()
+    {
+        return $this->biz['validator'];
     }
 }

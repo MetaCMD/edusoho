@@ -2,6 +2,7 @@
 
 namespace Biz\Content\Service\Impl;
 
+use AppBundle\Common\ArrayToolkit;
 use Biz\BaseService;
 use Biz\Common\CommonException;
 use Biz\Content\BlockException;
@@ -11,13 +12,12 @@ use Biz\Content\Dao\BlockTemplateDao;
 use Biz\Content\Service\BlockService;
 use Biz\System\Service\LogService;
 use Biz\System\Service\SettingService;
-use AppBundle\Common\ArrayToolkit;
 
 class BlockServiceImpl extends BaseService implements BlockService
 {
     public function createBlockTemplate($blockTemplate)
     {
-        if (!ArrayToolkit::requireds($blockTemplate, array('code', 'mode', 'category', 'meta', 'data', 'templateName', 'title'))) {
+        if (!ArrayToolkit::requireds($blockTemplate, ['code', 'mode', 'category', 'meta', 'data', 'templateName', 'title'])) {
             $this->createNewException(CommonException::ERROR_PARAMETER_MISSING());
         }
         $createdBlockTemplate = $this->getBlockTemplateDao()->create($blockTemplate);
@@ -37,7 +37,7 @@ class BlockServiceImpl extends BaseService implements BlockService
 
     public function getLatestBlockHistoriesByBlockIds($blockIds)
     {
-        $blockHistories = array();
+        $blockHistories = [];
         foreach ($blockIds as $key => $blockId) {
             $block = $this->getBlockDao()->get($blockId);
             $blockHistories[$block['blockTemplateId']] = $this->getBlockHistoryDao()->getLatestByBlockId($blockId);
@@ -75,32 +75,6 @@ class BlockServiceImpl extends BaseService implements BlockService
         return $this->getBlockHistoryDao()->get($id);
     }
 
-    public function generateBlockTemplateItems($block)
-    {
-        preg_match_all("/\(\((.+?)\)\)/", $block['template'], $matches);
-        while (list($key, $value) = each($matches[1])) {
-            $matches[1][$key] = trim($value);
-        }
-
-        $templateDatas = ($matches[1]) ? ($matches[1]) : '';
-        $templateItems = array();
-
-        if (empty($templateDatas)) {
-            return $templateItems;
-        } else {
-            $arr = array();
-            foreach ($templateDatas as &$item) {
-                $item = explode(':', $item);
-                $arr[] = array('title' => $item[0], 'type' => $item[1]);
-            }
-
-            $templateItems = ArrayToolkit::index($arr, 'title');
-            $templateItems = array_values($templateItems);
-
-            return $templateItems;
-        }
-    }
-
     public function getBlockByCode($code)
     {
         $user = $this->getCurrentUser();
@@ -131,7 +105,7 @@ class BlockServiceImpl extends BaseService implements BlockService
 
     public function getBlocksByBlockTemplateIdsAndOrgId($blockTemplateIds, $orgId)
     {
-        $blocks = array();
+        $blocks = [];
         foreach ($blockTemplateIds as $key => $blockTemplateId) {
             $blocks[] = $this->getBlockDao()->getByTemplateIdAndOrgId($blockTemplateId, $orgId);
         }
@@ -141,7 +115,7 @@ class BlockServiceImpl extends BaseService implements BlockService
 
     public function createBlock($block)
     {
-        if (!ArrayToolkit::requireds($block, array('code', 'data', 'content', 'blockTemplateId'))) {
+        if (!ArrayToolkit::requireds($block, ['code', 'data', 'content', 'blockTemplateId'])) {
             $this->createNewException(CommonException::ERROR_PARAMETER_MISSING());
         }
         $user = $this->getCurrentUser();
@@ -152,12 +126,12 @@ class BlockServiceImpl extends BaseService implements BlockService
         unset($block['mode']);
         $createdBlock = $this->getBlockDao()->create($block);
 
-        $blockHistoryInfo = array(
+        $blockHistoryInfo = [
             'blockId' => $createdBlock['id'],
             'content' => $createdBlock['content'],
             'userId' => $createdBlock['userId'],
             'createdTime' => time(),
-        );
+        ];
 
         $this->getBlockHistoryDao()->create($blockHistoryInfo);
 
@@ -181,17 +155,17 @@ class BlockServiceImpl extends BaseService implements BlockService
         unset($fields['mode']);
         $updatedBlock = $this->getBlockDao()->update($id, $fields);
 
-        $blockHistoryInfo = array(
+        $blockHistoryInfo = [
             'blockId' => $updatedBlock['id'],
             'content' => $updatedBlock['content'],
             'data' => $updatedBlock['data'],
             'userId' => $user['id'],
             'createdTime' => time(),
-        );
+        ];
 
         $this->getBlockHistoryDao()->create($blockHistoryInfo);
 
-        $this->getLogService()->info('system', 'update_block', "更新编辑区#{$id}", array('content' => $updatedBlock['content']));
+        $this->getLogService()->info('system', 'update_block', "更新编辑区#{$id}", ['content' => $updatedBlock['content']]);
 
         $blockTemplate = $this->getBlockTemplateDao()->get($updatedBlock['blockTemplateId']);
         $updatedBlock['id'] = $blockTemplate['id'];
@@ -218,7 +192,7 @@ class BlockServiceImpl extends BaseService implements BlockService
         $cdn = $this->getSettingService()->get('cdn');
         $cdnUrl = empty($cdn['enabled']) ? '' : $cdn['url'];
 
-        $contents = array();
+        $contents = [];
         foreach ($codes as $key => $value) {
             $block = $this->getBlockDao()->getByCode($value);
             if ($block) {
@@ -242,27 +216,27 @@ class BlockServiceImpl extends BaseService implements BlockService
             $this->createNewException(BlockException::NOTFOUND_TEMPLATE());
         }
 
-        return $this->getBlockTemplateDao()->update($id, array(
+        return $this->getBlockTemplateDao()->update($id, [
             'content' => $content,
-        ));
+        ]);
     }
 
     public function recovery($blockId, $history)
     {
         $block = $this->getBlockDao()->get($blockId);
-        $blockTemplate = $this->getBlockTemplateDao()->get($block['blockTemplateId']);
         if (empty($block)) {
             $this->createNewException(BlockException::NOTFOUND_BLOCK());
         }
 
+        $blockTemplate = $this->getBlockTemplateDao()->get($block['blockTemplateId']);
         if ('template' == $blockTemplate['mode'] && empty($history['data'])) {
             $this->createNewException(BlockException::EMPTY_HISTORY());
         }
 
-        return $this->getBlockDao()->update($blockId, array(
+        return $this->getBlockDao()->update($blockId, [
             'content' => $history['content'],
             'data' => $history['data'],
-        ));
+        ]);
     }
 
     public function getBlockByTemplateIdAndOrgId($blockTemplateId, $orgId = 0)
@@ -293,7 +267,7 @@ class BlockServiceImpl extends BaseService implements BlockService
     {
         $result = $this->getBlockTemplateDao()->get($id);
         if (empty($result)) {
-            return array();
+            return [];
         }
 
         return $result;
@@ -339,8 +313,8 @@ class BlockServiceImpl extends BaseService implements BlockService
 
     public function getPosters()
     {
-        $posters = array();
-        $theme = $this->getSettingService()->get('theme', array());
+        $posters = [];
+        $theme = $this->getSettingService()->get('theme', []);
         $topBanner = $this->getBlockDao()->getByCode($theme['uri'].':home_top_banner');
         if (empty($topBanner)) {
             $topBanner = $this->getBlockTemplateDao()->getByCode($theme['uri'].':home_top_banner');
@@ -353,10 +327,10 @@ class BlockServiceImpl extends BaseService implements BlockService
         }
         foreach ($data['posters'] as $poster) {
             if (1 == $poster['status']) {
-                $item = array(
+                $item = [
                     'image' => $poster['src'],
-                    'link' => array('type' => 'url', 'url' => $poster['href']),
-                );
+                    'link' => ['type' => 'url', 'url' => $poster['href']],
+                ];
                 array_push($posters, $item);
             }
         }

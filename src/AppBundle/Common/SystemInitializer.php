@@ -41,6 +41,7 @@ class SystemInitializer
         $this->_initThemes();
         $this->_initCoin();
         $this->_initJob();
+        $this->_initQueueJob();
         $this->_initOrg();
         $this->_initRole();
         $this->_initUserBalance();
@@ -53,6 +54,8 @@ class SystemInitializer
         $this->_initRefundSetting();
         $this->_initSiteSetting();
         $this->_initStorageSetting();
+        $this->_initCouponSetting();
+        $this->_initQuestionBankCategory();
         $this->_initSystemUsers();
         $this->_initCustom();
     }
@@ -241,7 +244,8 @@ class SystemInitializer
         $settingService->get('developer', array());
         $developer['cloud_api_failover'] = 1;
         $settingService->set('developer', $developer);
-
+        $settingService->set('backstage', array('is_v2' => 1));
+        $settingService->set('app_discovery', ['version' => 1]);
         $this->output->writeln(' ...<info>成功</info>');
     }
 
@@ -258,6 +262,19 @@ class SystemInitializer
         );
 
         $this->getSettingService()->set('storage', $default);
+
+        $this->output->writeln(' ...<info>成功</info>');
+    }
+
+    private function _initCouponSetting()
+    {
+        $this->output->write('  初始化优惠码设置');
+
+        $default = array(
+            'enabled' => 1,
+        );
+
+        $this->getSettingService()->set('coupon', $default);
 
         $this->output->writeln(' ...<info>成功</info>');
     }
@@ -598,7 +615,7 @@ EOD;
                         'data' => $data,
                     ));
                 } else {
-                    $this->getBlockService()->updateBlockTemplate($block['id'], array(
+                    $this->getBlockService()->updateBlockTemplate($block['blockTemplateId'], array(
                         'content' => $content,
                         'data' => $data,
                     ));
@@ -616,6 +633,17 @@ EOD;
         SystemCrontabInitializer::init();
 
         $this->output->writeln(' ...<info>成功</info>');
+    }
+
+    protected function _initQueueJob()
+    {
+        $this->output->write('  DataBase消息队列初始化');
+        try {
+            SystemQueueCrontabinitializer::init();
+            $this->output->writeln(' ...<info>成功</info>');
+        } catch (\Exception $e) {
+            $this->output->writeln(' ...<info>失败</info>'.$e->getMessage());
+        }
     }
 
     protected function _initSystemUsers()
@@ -660,6 +688,13 @@ EOD;
     {
         $this->output->write('  初始化角色');
         $this->getRoleService()->refreshRoles();
+        $this->output->writeln(' ...<info>成功</info>');
+    }
+
+    protected function _initQuestionBankCategory()
+    {
+        $this->output->write('  初始化题库默认分类');
+        $this->getQuestionBankCategoryService()->createCategory(array('name' => '默认分类', 'parentId' => 0));
         $this->output->writeln(' ...<info>成功</info>');
     }
 
@@ -774,5 +809,13 @@ EOD;
     protected function getDictionaryService()
     {
         return ServiceKernel::instance()->getBiz()->service('Dictionary:DictionaryService');
+    }
+
+    /**
+     * @return \Biz\QuestionBank\Service\CategoryService
+     */
+    protected function getQuestionBankCategoryService()
+    {
+        return ServiceKernel::instance()->getBiz()->service('QuestionBank:CategoryService');
     }
 }

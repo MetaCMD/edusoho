@@ -27,6 +27,7 @@ class PayServiceImpl extends BaseService implements PayService
             'notify_url',
             'return_url',
             'show_url',
+            'success_url',
             'create_ip',
             'platform_type',
             'platform',
@@ -37,6 +38,7 @@ class PayServiceImpl extends BaseService implements PayService
             'type',
             'rate',
             'app_pay',
+            'time_expire',
         ));
 
         if ('recharge' == $data['type']) {
@@ -144,7 +146,10 @@ class PayServiceImpl extends BaseService implements PayService
         }
 
         if (!empty($trade['invoice_sn'])) {
-            throw new NotFoundException('trade had invoice');
+            $invoice = $this->getInvoiceService()->getInvoiceBySn($trade['invoice_sn']);
+            if ('refused' != $invoice['status']) {
+                throw new AccessDeniedException('trade had invoice');
+            }
         }
 
         if ($this->biz['user']['id'] != $trade['user_id']) {
@@ -238,7 +243,6 @@ class PayServiceImpl extends BaseService implements PayService
             'trade_sn' => $trade['trade_sn'],
             'status' => 'paid',
             'pay_amount' => $data['pay_amount'],
-            'receipt' => $data['receipt'],
         );
         $this->updateTradeToPaidAndTransferAmount($data);
         $trade = $this->getPayTradeDao()->get($trade['id']);
@@ -255,15 +259,24 @@ class PayServiceImpl extends BaseService implements PayService
 
     protected function closeByPayment($data)
     {
-        $response = $this->getPayment($data['platform'])->closeTrade($data);
-        if (!empty($response) && !$response->isSuccessful()) {
-            $failData = $response->getMessage();
-            $this->getTargetlogService()->log(TargetlogService::INFO, 'trade.close_failed', $data['trade_sn'], "交易号{$data['trade_sn']}关闭失败,{$failData},(order_sn:{$data['order_sn']})", $data);
-        } else {
-            $this->getTargetlogService()->log(TargetlogService::INFO, 'trade.close', $data['trade_sn'], "交易号{$data['trade_sn']}关闭成功。(order_sn:{$data['order_sn']})", $data);
-        }
+        try {
+            $response = $this->getPayment($data['platform'])->closeTrade($data);
+            if (!empty($response) && !$response->isSuccessful()) {
+                if (method_exists($response, 'getFailData')) {
+                    $failData = $response->getFailData();
+                } else {
+                    $failData = $response->getMessage();
+                }
+                $this->getTargetlogService()->log(TargetlogService::INFO, 'trade.close_failed', $data['trade_sn'], "交易号{$data['trade_sn']}关闭失败,{$failData},(order_sn:{$data['order_sn']})", $data);
+            } else {
+                $this->getTargetlogService()->log(TargetlogService::INFO, 'trade.close', $data['trade_sn'], "交易号{$data['trade_sn']}关闭成功。(order_sn:{$data['order_sn']})", $data);
+            }
 
-        return $response;
+            return $response;
+        } catch (\Exception $e) {
+            $this->getTargetlogService()->log(TargetlogService::INFO, 'trade.close_failed', $data['trade_sn'], "交易号{$data['trade_sn']}关闭失败,{$e->getMessage()},(order_sn:{$data['order_sn']})", $data);
+            return null;
+        }
     }
 
     protected function updateTradeToPaidAndTransferAmount($data)
@@ -301,8 +314,9 @@ class PayServiceImpl extends BaseService implements PayService
 
                 $this->commit();
             } catch (\Exception $e) {
-                $this->getTargetlogService()->log(TargetlogService::INFO, 'pay.error', $data['trade_sn'], "交易号{$data['trade_sn']}处理失败, {$e->getMessage()}", $data);
                 $this->rollback();
+                $this->getTargetlogService()->log(TargetlogService::INFO, 'pay.error', $data['trade_sn'], "交易号{$data['trade_sn']}处理失败, {$e->getMessage()}", $data);
+                throw $e;
             }
 
             $this->dispatch('payment_trade.paid', $trade, $data);
@@ -313,9 +327,9 @@ class PayServiceImpl extends BaseService implements PayService
         return $this->getPayTradeDao()->getByTradeSn($data['trade_sn']);
     }
 
-    public function searchTrades($conditions, $orderBy, $start, $limit)
+    public function searchTrades($conditions, $orderBy, $start, $limit, $columns = array())
     {
-        return $this->getPayTradeDao()->search($conditions, $orderBy, $start, $limit);
+        return $this->getPayTradeDao()->search($conditions, $orderBy, $start, $limit, $columns);
     }
 
     public function countTrades($conditions)
@@ -545,6 +559,11 @@ class PayServiceImpl extends BaseService implements PayService
     protected function getAccountService()
     {
         return $this->biz->service('Pay:AccountService');
+    }
+
+    protected function getInvoiceService()
+    {
+        return $this->biz->service('Invoice:InvoiceService');
     }
 
     protected function getDefaultCoinRate()

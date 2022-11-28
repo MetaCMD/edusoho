@@ -14,7 +14,19 @@ interface ActivityService
 
     public function findActivitiesByCourseIdAndType($courseId, $type, $fetchMedia = false);
 
+    public function findActivitiesByCourseSetId($courseSetId);
+
+    public function findActivitiesByCourseIdsAndType($courseIds, $type, $fetchMedia = false);
+
+    public function findActivitiesByCourseIdsAndTypes($courseIds, $types, $fetchMedia = false);
+
     public function findActivitiesByCourseSetIdAndType($courseSetId, $type, $fetchMedia = false);
+
+    public function findActivitiesByCourseSetIdsAndType($courseSetIds, $type, $fetchMedia = false);
+
+    public function findActivitiesByCourseSetIdsAndTypes($courseSetIds, $types, $fetchMedia = false);
+
+    public function findActivitiesByMediaIdsAndMediaType($mediaIds, $mediaType);
 
     /**
      * 创建之前检查完整性
@@ -42,7 +54,7 @@ interface ActivityService
 
     public function deleteActivity($id);
 
-    public function search($conditions, $orderBy, $start, $limit);
+    public function search($conditions, $orderBy, $start, $limit, $columns = []);
 
     public function count($conditions);
 
@@ -53,7 +65,7 @@ interface ActivityService
      */
     public function getActivityConfig($type);
 
-    public function trigger($activityId, $name, $data = array());
+    public function trigger($activityId, $name, $data = []);
 
     public function isFinished($activityId);
 
@@ -64,4 +76,18 @@ interface ActivityService
     public function checkLiveStatus($courseId, $activityId);
 
     public function findFinishedLivesWithinTwoHours();
+
+    public function getActivityFinishCondition($activity);
+
+    public function getByMediaIdAndMediaTypeAndCopyId($mediaId, $mediaType, $copyId);
+
+    public function getByMediaIdAndMediaType($mediaId, $mediaType);
+
+    public function getByMediaIdAndMediaTypeAndCourseId($mediaId, $mediaType, $courseId);
+
+    public function findManageReplayActivityIds($conditions);
+
+    public function getActivityByAnswerSceneId($answerSceneId);
+
+    public function orderAssessmentSubmitNumber($userIds, $answerSceneId);
 }

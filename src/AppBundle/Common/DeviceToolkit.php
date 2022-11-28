@@ -17,19 +17,18 @@ class DeviceToolkit
         }
 
         //如果via信息含有wap则一定是移动设备,部分服务商会屏蔽该信息
-        if (isset($_SERVER['HTTP_VIA'])) {
-            //找不到为flase,否则为true
-            return stristr($_SERVER['HTTP_VIA'], 'wap') ? true : false;
+        if (isset($_SERVER['HTTP_VIA']) && stristr($_SERVER['HTTP_VIA'], 'wap')) {
+            return true;
         }
 
         //判断手机发送的客户端标志,兼容性有待提高
         if (isset($_SERVER['HTTP_USER_AGENT'])) {
-            $clientkeywords = array(
+            $clientkeywords = [
                 'nokia', 'sony', 'ericsson', 'mot', 'samsung', 'htc', 'sgh', 'lg', 'sharp',
                 'sie-', 'philips', 'panasonic', 'alcatel', 'lenovo', 'iphone', 'ipod', 'blackberry', 'meizu',
                 'android', 'netfront', 'symbian', 'ucweb', 'windowsce', 'palm', 'operamini', 'operamobi',
-                'openwave', 'nexusone', 'cldc', 'midp', 'wap', 'mobile',
-            );
+                'openwave', 'nexusone', 'cldc', 'midp', 'wap', 'mobile', 'ipad',
+            ];
 
             // 从HTTP_USER_AGENT中查找手机浏览器的关键字
             if (preg_match('/('.implode('|', $clientkeywords).')/i', strtolower($_SERVER['HTTP_USER_AGENT']))) {
@@ -49,25 +48,86 @@ class DeviceToolkit
         return false;
     }
 
+    public static function isIOSClient()
+    {
+        //判断手机发送的客户端标志,兼容性有待提高
+        if (isset($_SERVER['HTTP_USER_AGENT'])) {
+            $clientkeywords = [
+                'iphone', 'ipod', 'ipad',
+            ];
+
+            // 从HTTP_USER_AGENT中查找手机浏览器的关键字
+            if (preg_match('/('.implode('|', $clientkeywords).')/i', strtolower($_SERVER['HTTP_USER_AGENT']))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param $userAgent
+     *
+     * @return string
+     */
     public static function getMobileDeviceType($userAgent)
     {
         $userAgent = strtolower($userAgent);
 
-        $ios = array('iphone', 'ipad', 'ipod');
+        $ios = ['iphone', 'ipad', 'ipod'];
         foreach ($ios as $keyword) {
             if (strpos($userAgent, $keyword) > -1) {
                 return 'ios';
             }
         }
 
-        if (strpos($userAgent, 'Android') > -1) {
+        if (strpos($userAgent, 'android') > -1) {
             return 'android';
         }
 
         return 'unknown';
     }
 
+    /**
+     * @param $userAgent
+     *
+     * @return string
+     *                iOS UA：EduSoho/4.9.1 (iPhone; iOS 13.5.1; Scale/3.00)|【EduSoho/App版本号（设备机型；系统版本；屏幕缩放尺寸）】
+     *                Android UA：TNY-AL100 Android-kuozhi 29
+     */
+    public static function getClient($userAgent)
+    {
+        $userAgent = strtolower($userAgent);
+        $userAgent = strtolower($userAgent);
+
+        $ios = ['iphone', 'ipad', 'ipod'];
+        foreach ($ios as $keyword) {
+            if (strpos($userAgent, $keyword) > -1 && strpos($userAgent, 'edusoho/') > -1) {
+                return 'ios';
+            }
+        }
+
+        if (strpos($userAgent, 'android-kuozhi')) {
+            return 'android';
+        }
+
+        if ('unknown' !== self::getMobileDeviceType($userAgent) && strpos($userAgent, 'micromessenger') > -1) {
+            return 'miniprogram';
+        }
+
+        return 'unknown';
+    }
+
     public static function getBrowse()
+    {
+        try {
+            return self::matchBrowser();
+        } catch (\Exception $e) {
+            return '未知浏览器';
+        }
+    }
+
+    private static function matchBrowser()
     {
         if (!isset($_SERVER['HTTP_USER_AGENT'])) {
             return '未知浏览器';
@@ -96,6 +156,14 @@ class DeviceToolkit
             preg_match("/Edge\/([\d\.]+)/", $agent, $version);
             $exp[0] = 'Edge';
             $exp[1] = $version[1];
+        } elseif (false !== stripos($agent, 'QQBrowserLite')) {
+            preg_match("/QQBrowserLite\/([\d\.]+)/", $agent, $version);
+            $exp[0] = 'QQ Lite浏览器';
+            $exp[1] = $version[1];
+        } elseif (false !== stripos($agent, 'QQBrowser')) {
+            preg_match("/QQBrowser\/([\d\.]+)/", $agent, $version);
+            $exp[0] = 'QQ浏览器';
+            $exp[1] = $version[1];
         } elseif (false !== stripos($agent, 'Chrome')) {
             preg_match("/Chrome\/([\d\.]+)/", $agent, $version);
             $exp[0] = 'Chrome';
@@ -103,10 +171,6 @@ class DeviceToolkit
         } elseif (false !== stripos($agent, 'rv:') && false !== stripos($agent, 'Gecko')) {
             preg_match("/rv:([\d\.]+)/", $agent, $version);
             $exp[0] = 'IE';
-            $exp[1] = $version[1];
-        } elseif (false !== stripos($agent, 'QQBrowser')) {
-            preg_match("/QQBrowser([\d\.]+)/", $agent, $version);
-            $exp[0] = 'QQ浏览器';
             $exp[1] = $version[1];
         } elseif (false !== stripos($agent, 'MetaSr')) {
             preg_match("/MetaSr([\d\.]+)/", $agent, $version);

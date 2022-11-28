@@ -5,6 +5,7 @@ namespace AppBundle\Twig;
 use Biz\Activity\Service\ActivityService;
 use Biz\MaterialLib\Service\MaterialLibService;
 use Biz\Player\Service\PlayerService;
+use Biz\System\Service\SettingService;
 use Codeages\Biz\Framework\Context\Biz;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
@@ -29,25 +30,30 @@ class ActivityExtension extends \Twig_Extension
 
     public function getFilters()
     {
-        return array(
-            new \Twig_SimpleFilter('activity_length_format', array($this, 'lengthFormat')),
-            new \Twig_SimpleFilter('convert_minute_and_second', array($this, 'convertMinuteAndSecond')),
-            new \Twig_SimpleFilter('prepare_video_media_uri', array($this, 'prepareVideoMediaUri')),
-        );
+        return [
+            new \Twig_SimpleFilter('activity_length_format', [$this, 'lengthFormat']),
+            new \Twig_SimpleFilter('convert_minute_and_second', [$this, 'convertMinuteAndSecond']),
+            new \Twig_SimpleFilter('prepare_video_media_uri', [$this, 'prepareVideoMediaUri']),
+        ];
     }
 
     public function getFunctions()
     {
-        return array(
-            new \Twig_SimpleFunction('activity_meta', array($this, 'getActivityMeta')),
-            new \Twig_SimpleFunction('activity_metas', array($this, 'getActivityMeta')),
-            new \Twig_SimpleFunction('can_free_activity_types', array($this, 'getCanFreeActivityTypes')),
-            new \Twig_SimpleFunction('ltc_source', array($this, 'findLtcSource')),
-            new \Twig_SimpleFunction('flash_player', array($this, 'flashPlayer')),
-            new \Twig_SimpleFunction('doc_player', array($this, 'docPlayer')),
-            new \Twig_SimpleFunction('ppt_player', array($this, 'pptPlayer')),
-            new \Twig_SimpleFunction('activity_visible', array($this, 'isActivityVisible')),
-        );
+        return [
+            new \Twig_SimpleFunction('activity_meta', [$this, 'getActivityMeta']),
+            new \Twig_SimpleFunction('activity_metas', [$this, 'getActivityMeta']),
+            new \Twig_SimpleFunction('can_free_activity_types', [$this, 'getCanFreeActivityTypes']),
+            new \Twig_SimpleFunction('ltc_source', [$this, 'findLtcSource']),
+            new \Twig_SimpleFunction('flash_player', [$this, 'flashPlayer']),
+            new \Twig_SimpleFunction('doc_player', [$this, 'docPlayer']),
+            new \Twig_SimpleFunction('resource_player_context', [$this, 'resourcePlayerContext']),
+            new \Twig_SimpleFunction('activity_visible', [$this, 'isActivityVisible']),
+        ];
+    }
+
+    public function resourcePlayerContext($file)
+    {
+        return $this->getResourceFacadeService()->getPlayerContext($file);
     }
 
     public function prepareVideoMediaUri($video)
@@ -59,7 +65,7 @@ class ActivityExtension extends \Twig_Extension
 
     public function convertMinuteAndSecond($second)
     {
-        $result = array();
+        $result = [];
         if (!empty($second)) {
             $result['minute'] = (int) ($second / 60);
             $result['second'] = (int) ($second % 60);
@@ -68,29 +74,19 @@ class ActivityExtension extends \Twig_Extension
         return $result;
     }
 
-    public function flashPlayer($globalId, $ssl)
+    public function flashPlayer($file, $ssl)
     {
-        return $this->getMaterialLibService()->player($globalId, $ssl);
+        return $this->getPlayerService()->getFlashFilePlayer($file, $ssl);
     }
 
     public function docPlayer($doc, $ssl)
     {
         list($result, $error) = $this->getPlayerService()->getDocFilePlayer($doc, $ssl);
 
-        return array(
+        return [
             'error' => $error,
             'result' => $result,
-        );
-    }
-
-    public function pptPlayer($doc, $ssl)
-    {
-        list($result, $error) = $this->getPlayerService()->getPptFilePlayer($doc, $ssl);
-
-        return array(
-            'error' => $error,
-            'result' => $result,
-        );
+        ];
     }
 
     public function findLtcSource($courseId, $taskId)
@@ -102,31 +98,53 @@ class ActivityExtension extends \Twig_Extension
             $cdn = empty($cdnSetting['defaultUrl']) ? '' : $cdnSetting['defaultUrl'];
         }
         $task = $this->getTaskService()->getTask($taskId);
-        $context = array(
+        $context = [
             'courseId' => $course['id'],
             'courseSetId' => $course['courseSetId'],
             'taskId' => empty($task) ? 0 : $task['id'],
             'activityId' => empty($task) ? 0 : $task['activityId'],
-        );
+        ];
 
-        return json_encode(array(
-            'resource' => array(
-                'jquery' => $cdn.'/static-dist/libs/jquery/dist/jquery.min.js',
-                'codeage-design.css' => $cdn.'/static-dist/libs/codeages-design/dist/codeages-design.css',
-                'codeage-design' => $cdn.'/static-dist/libs/codeages-design/dist/codeages-design.js',
-                'validate' => $cdn.'/static-dist/libs/jquery-validation/dist/jquery.validate.js',
-                'bootstrap.css' => $cdn.'/static-dist/libs/bootstrap/dist/css/bootstrap.css',
-                'bootstrap' => $cdn.'/static-dist/libs/bootstrap/dist/js/bootstrap.min.js',
-                'editor' => $cdn.'/static-dist/libs/es-ckeditor/ckeditor.js',
-                'scrollbar' => $cdn.'/static-dist/libs/perfect-scrollbar.js',
-            ),
+        return json_encode([
+            'resource' => $this->findStaticResource(),
             'context' => $context,
-            'editorConfig' => array(
-                'filebrowserImageUploadUrl' => $this->generateUrl('editor_upload', array('token' => $this->getWebExtension()->makeUpoadToken('course'))),
-                'filebrowserFlashUploadUrl' => $this->generateUrl('editor_upload', array('token' => $this->getWebExtension()->makeUpoadToken('course', 'flash'))),
-                'imageDownloadUrl' => $this->generateUrl('editor_download', array('token' => $this->getWebExtension()->makeUpoadToken('course'))),
-            ),
-        ));
+            'editorConfig' => [
+                'filebrowserImageUploadUrl' => $this->generateUrl('editor_upload', ['token' => $this->getWebExtension()->makeUploadToken('course')]),
+                'filebrowserFlashUploadUrl' => $this->generateUrl('editor_upload', ['token' => $this->getWebExtension()->makeUploadToken('course', 'flash')]),
+                'imageDownloadUrl' => $this->generateUrl('editor_download', ['token' => $this->getWebExtension()->makeUploadToken('course')]),
+                'fileSingleSizeLimit' => $this->getSettingService()->node('magic.file_single_size_limit', 10),
+            ],
+        ]);
+    }
+
+    protected function findStaticResource()
+    {
+        $cdnSetting = $this->getSettingService()->get('cdn');
+        $cdn = '';
+        if (!empty($cdnSetting) && !empty($cdnSetting['enabled'])) {
+            $cdn = empty($cdnSetting['defaultUrl']) ? '' : $cdnSetting['defaultUrl'];
+        }
+
+        $version = $this->container->getParameter('app_version');
+
+        $resources = [
+            'jquery' => $cdn.'/static-dist/libs/jquery/dist/jquery.min.js',
+            'codeage-design.css' => $cdn.'/static-dist/libs/codeages-design/dist/codeages-design.css',
+            'codeage-design' => $cdn.'/static-dist/libs/codeages-design/dist/codeages-design.js',
+            'validate' => $cdn.'/static-dist/libs/jquery-validation/dist/jquery.validate.js',
+            'bootstrap.css' => $cdn.'/static-dist/libs/bootstrap/dist/css/bootstrap.css',
+            'bootstrap' => $cdn.'/static-dist/libs/bootstrap/dist/js/bootstrap.min.js',
+            'editor' => $cdn.'/static-dist/libs/es-ckeditor/ckeditor.js',
+            'scrollbar' => $cdn.'/static-dist/libs/perfect-scrollbar.js',
+            'es-ckeditor-highlight' => $cdn.'/static-dist/libs/es-ckeditor/plugins/codesnippet/lib/highlight/highlight.pack.js',
+            'es-ckeditor-highlight-zenburn.css' => $cdn.'/static-dist/libs/es-ckeditor/plugins/codesnippet/lib/highlight/styles/zenburn.css',
+        ];
+
+        foreach ($resources as &$resource) {
+            $resource = $resource.'?v='.$version;
+        }
+
+        return $resources;
     }
 
     public function getActivityMeta($type = null)
@@ -140,12 +158,12 @@ class ActivityExtension extends \Twig_Extension
 
         foreach ($customActivities as $customActivity) {
             if (!isset($activities[$customActivity['type']])) {
-                $activities[$customActivity['type']] = array(
-                    'meta' => array(
+                $activities[$customActivity['type']] = [
+                    'meta' => [
                         'name' => $this->container->get('translator')->trans($customActivity['name']),
                         'icon' => $customActivity['icon']['value'],
-                    ),
-                );
+                    ],
+                ];
             }
         }
 
@@ -160,10 +178,10 @@ class ActivityExtension extends \Twig_Extension
                 return $activities[$type]['meta'];
             }
 
-            return array(
+            return [
                 'icon' => '',
                 'name' => '',
-            );
+            ];
         }
     }
 
@@ -178,6 +196,8 @@ class ActivityExtension extends \Twig_Extension
     {
         $activities = $this->container->get('extension.manager')->getActivities();
 
+        $type = $this->removeFlashTask($type);
+
         return isset($activities[$type]) ? call_user_func($activities[$type]['visible'], $courseSet, $course) : false;
     }
 
@@ -187,7 +207,7 @@ class ActivityExtension extends \Twig_Extension
             return null;
         }
 
-        if (in_array($type, array('testpaper', 'live'))) {
+        if (in_array($type, ['testpaper', 'live'])) {
             $len *= 60;
         }
         $h = floor($len / 3600);
@@ -204,15 +224,24 @@ class ActivityExtension extends \Twig_Extension
 
     public function getCanFreeActivityTypes()
     {
-        $types = array();
+        $types = [];
         $activities = $this->container->get('extension.manager')->getActivities();
         foreach ($activities as $type => $activity) {
-            if (isset($activity['canFree']) && $activity['canFree']) {
+            if (isset($activity['canFree']) && $activity['canFree'] && 'flash' != $type) {
                 $types[$type] = $this->container->get('translator')->trans($activity['meta']['name']);
             }
         }
 
         return $types;
+    }
+
+    private function removeFlashTask($type)
+    {
+        if ('flash' == $type) {
+            return;
+        } else {
+            return $type;
+        }
     }
 
     /**
@@ -265,5 +294,10 @@ class ActivityExtension extends \Twig_Extension
     protected function generateUrl($route, $parameters)
     {
         return $this->container->get('router')->generate($route, $parameters, UrlGeneratorInterface::ABSOLUTE_PATH);
+    }
+
+    protected function getResourceFacadeService()
+    {
+        return $this->biz->service('CloudPlatform:ResourceFacadeService');
     }
 }

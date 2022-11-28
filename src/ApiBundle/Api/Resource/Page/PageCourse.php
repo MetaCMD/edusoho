@@ -2,11 +2,21 @@
 
 namespace ApiBundle\Api\Resource\Page;
 
-use ApiBundle\Api\ApiRequest;
 use ApiBundle\Api\Annotation\ApiConf;
-use ApiBundle\Api\Resource\AbstractResource;
 use ApiBundle\Api\Annotation\ResponseFilter;
+use ApiBundle\Api\ApiRequest;
+use ApiBundle\Api\Resource\AbstractResource;
 use AppBundle\Common\ArrayToolkit;
+use Biz\Assistant\Service\AssistantStudentService;
+use Biz\Course\Service\CourseService;
+use Biz\Goods\Service\GoodsService;
+use Biz\MultiClass\Service\MultiClassService;
+use Biz\User\Service\TokenService;
+use Biz\User\Service\UserService;
+use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
+use VipPlugin\Biz\Marketing\Service\VipRightService;
+use VipPlugin\Biz\Marketing\VipRightSupplier\ClassroomVipRightSupplier;
+use VipPlugin\Biz\Marketing\VipRightSupplier\CourseVipRightSupplier;
 
 class PageCourse extends AbstractResource
 {
@@ -23,14 +33,14 @@ class PageCourse extends AbstractResource
         $user = $this->getCurrentUser();
         $member = null;
         if (!empty($user['id'])) {
-            $apiRequest = new ApiRequest('/api/me/course_members/'.$courseId, 'GET', array());
+            $apiRequest = new ApiRequest('/api/me/course_members/'.$courseId, 'GET', []);
             $member = $this->invokeResource($apiRequest);
         }
         $course['member'] = $member;
         $course['learnedCompulsoryTaskNum'] = empty($member) ? 0 : $member['learnedCompulsoryTaskNum'];
 
-        $this->getOCUtil()->single($course, array('creator', 'teacherIds'));
-        $this->getOCUtil()->single($course, array('courseSetId'), 'courseSet');
+        $this->getOCUtil()->single($course, ['creator', 'teacherIds']);
+        $this->getOCUtil()->single($course, ['courseSetId'], 'courseSet');
         $course['access'] = $this->getCourseService()->canJoinCourse($courseId);
 
         $course['courseItems'] = $this->container->get('api.util.item_helper')->convertToLeadingItemsV2(
@@ -38,36 +48,190 @@ class PageCourse extends AbstractResource
             $course,
             $request->getHttpRequest()->isSecure(),
             $request->query->get('fetchSubtitlesUrls', 0),
-            $request->query->get('onlyPublished', 0)
+            $request->query->get('onlyPublished', 0),
+            $request->query->get('showOptionalNum', 1)
         );
 
         $course['allowAnonymousPreview'] = $this->getSettingService()->get('course.allowAnonymousPreview', 1);
         $course['courses'] = $this->getCourseService()->findPublishedCoursesByCourseSetId($course['courseSet']['id']);
         $course['courses'] = ArrayToolkit::sortPerArrayValue($course['courses'], 'seq');
+        $course['courses'] = $this->getCourseService()->appendSpecsInfo($course['courses']);
         $course['progress'] = $this->getLearningDataAnalysisService()->makeProgress($course['learnedCompulsoryTaskNum'], $course['compulsoryTaskNum']);
+        $course['hasCertificate'] = $this->getCourseService()->hasCertificate($course['id']);
 
-        $reviews = $this->getCourseReviewService()->searchReviews(
-            array('courseSetId' => $course['courseSet']['id'], 'private' => 0, 'parentId' => 0),
-            array('updatedTime' => 'DESC'),
-            0, self::DEFAULT_DISPLAY_COUNT
-        );
+        $course = $this->getCourseService()->appendSpecInfo($course);
+        $goods = $this->getGoodsService()->getGoods($course['goodsId']);
+        $course['hitNum'] = empty($goods['hitNum']) ? 0 : $goods['hitNum'];
 
-        $this->getOCUtil()->multiple($reviews, array('userId'));
-        $this->getOCUtil()->multiple($reviews, array('courseId'), 'course');
-        foreach ($reviews as &$review) {
-            $review['posts'] = $this->getCourseReviewService()->searchReviews(array('parentId' => $review['id']), array('updatedTime' => 'DESC'), 0, self::DEFAULT_DISPLAY_COUNT);
-            $this->getOCUtil()->multiple($review['posts'], array('userId'));
-            $this->getOCUtil()->multiple($review['posts'], array('courseId'), 'course');
+        if ($course['parentId'] > 0) {
+            $classroom = $this->getClassroomService()->getClassroomByCourseId($course['id']);
+            empty($classroom) || $course['classroom'] = $this->getClassroomService()->appendSpecInfo($classroom);
         }
-        $course['reviews'] = $reviews;
-        if ($this->isPluginInstalled('vip') && $course['vipLevelId'] > 0) {
-            $apiRequest = new ApiRequest('/api/plugins/vip/vip_levels/'.$course['vipLevelId'], 'GET', array());
-            $course['vipLevel'] = $this->invokeResource($apiRequest);
+
+        if ($this->isPluginInstalled('vip')) {
+            if (!empty($course['classroom'])) {
+                $vipRight = $this->getVipRightService()->getVipRightsBySupplierCodeAndUniqueCode(ClassroomVipRightSupplier::CODE, $course['classroom']['id']);
+            } else {
+                $vipRight = $this->getVipRightService()->getVipRightsBySupplierCodeAndUniqueCode(CourseVipRightSupplier::CODE, $course['id']);
+            }
+            empty($vipRight) || $course['vipLevel'] = $this->getVipLevel($vipRight['vipLevelId']);
+        }
+
+        $course['reviews'] = $this->searchCourseReviews($course);
+        $course['myReview'] = $this->getMyReview($course, $user);
+
+        $course['assistant'] = [];
+        if (!empty($user['id'])) {
+            $assistantStudent = $this->getAssistantStudentService()->getByStudentIdAndCourseId($user['id'], $courseId);
+            if (!empty($assistantStudent)) {
+                $course['assistantId'] = $assistantStudent['assistantId'];
+                $this->getOCUtil()->single($course, ['assistantId']);
+                $course['assistant'] = $this->getAssistantScrmQrCode($course['assistant']);
+            }
         }
 
         return $course;
     }
 
+    protected function getAssistantScrmQrCode($assistant)
+    {
+        if (empty($assistant['scrmStaffId'])) {
+            return $assistant;
+        }
+
+        $scrmBindQrCode = $this->generateScrmQrCode($assistant);
+        if (!empty($scrmBindQrCode)) {
+            $assistant['weChatQrCode'] = $scrmBindQrCode;
+        }
+
+        return $assistant;
+    }
+
+    protected function generateScrmQrCode($assistant)
+    {
+        $scrmBind = $this->getSCRMService()->isScrmBind();
+        if (empty($scrmBind)) {
+            return '';
+        }
+
+        $user = $this->setScrmData();
+        if (!empty($user['scrmUuid'])) {
+            return $this->getSCRMService()->getAssistantQrCode($assistant);
+        }
+
+        $url = $this->getScrmStudentBindUrl($assistant);
+        if (empty($url)) {
+            return '';
+        }
+
+        $token = $this->getTokenService()->makeToken(
+            'qrcode',
+            [
+                'userId' => $user['id'],
+                'data' => [
+                    'url' => $url,
+                ],
+                'times' => 1,
+                'duration' => 3600,
+            ]
+        );
+        $url = $this->generateUrl('common_parse_qrcode', ['token' => $token['token']], UrlGeneratorInterface::ABSOLUTE_URL);
+
+        return $this->generateUrl('common_qrcode', ['text' => $url], UrlGeneratorInterface::ABSOLUTE_URL);
+    }
+
+    protected function setScrmData()
+    {
+        $user = $this->getUserService()->getUser($this->getCurrentUser()->getId());
+        $user = $this->getSCRMService()->setUserSCRMData($user);
+
+        return $user;
+    }
+
+    protected function getScrmStudentBindUrl($assistant)
+    {
+        $user = $this->getUserService()->getUser($this->getCurrentUser()->getId());
+
+        $bindUrl = $this->getSCRMService()->getWechatOauthLoginUrl($user, $this->generateUrl('scrm_user_bind_result', ['uuid' => $user['uuid'], 'assistantUuid' => $assistant['uuid']], UrlGeneratorInterface::ABSOLUTE_URL));
+
+        return $bindUrl;
+    }
+
+    protected function getVipLevel($levelId)
+    {
+        $apiRequest = new ApiRequest('/api/plugins/vip/vip_levels/'.$levelId, 'GET', []);
+
+        return $this->invokeResource($apiRequest);
+    }
+
+    protected function searchCourseReviews($course)
+    {
+        if (0 == $course['parentId']) {
+            $targetType = 'goods';
+            $targetId = $course['goodsId'];
+        } else {
+            $targetType = 'course';
+            $targetId = $course['id'];
+        }
+        $result = $this->invokeResource(new ApiRequest(
+            '/api/reviews',
+            'GET',
+            [
+                'targetType' => $targetType,
+                'targetId' => $targetId,
+                'parentId' => 0,
+                'offset' => 0,
+                'limit' => self::DEFAULT_DISPLAY_COUNT,
+                'orderBys' => ['updatedTime' => 'DESC'],
+                'needPosts' => true,
+            ]
+        ));
+
+        return $result['data'];
+    }
+
+    protected function getMyReview($course, $user)
+    {
+        if (empty($user['id'])) {
+            return null;
+        }
+
+        if (0 == $course['parentId']) {
+            $targetType = 'goods';
+            $targetId = $course['goodsId'];
+        } else {
+            $targetType = 'course';
+            $targetId = $course['id'];
+        }
+        $result = $this->invokeResource(new ApiRequest(
+            '/api/reviews',
+            'GET',
+            [
+                'targetType' => $targetType,
+                'targetId' => $targetId,
+                'userId' => $user['id'],
+                'parentId' => 0,
+                'offset' => 0,
+                'limit' => self::DEFAULT_DISPLAY_COUNT,
+                'orderBys' => ['updatedTime' => 'DESC'],
+                'needPosts' => true,
+            ]
+        ));
+
+        return empty($result['data']) ? null : reset($result['data']);
+    }
+
+    /**
+     * @return GoodsService
+     */
+    private function getGoodsService()
+    {
+        return $this->service('Goods:GoodsService');
+    }
+
+    /**
+     * @return CourseService
+     */
     private function getCourseService()
     {
         return $this->service('Course:CourseService');
@@ -93,8 +257,56 @@ class PageCourse extends AbstractResource
         return $this->service('Course:LearningDataAnalysisService');
     }
 
-    private function getCourseReviewService()
+    /**
+     * @return VipRightService
+     */
+    private function getVipRightService()
     {
-        return $this->service('Course:ReviewService');
+        return $this->service('VipPlugin:Marketing:VipRightService');
+    }
+
+    private function getClassroomService()
+    {
+        return $this->service('Classroom:ClassroomService');
+    }
+
+    /**
+     * @return MultiClassService
+     */
+    private function getMultiClassService()
+    {
+        return $this->service('MultiClass:MultiClassService');
+    }
+
+    /**
+     * @return AssistantStudentService
+     */
+    protected function getAssistantStudentService()
+    {
+        return $this->service('Assistant:AssistantStudentService');
+    }
+
+    /**
+     * @return \Biz\SCRM\Service\SCRMService
+     */
+    protected function getSCRMService()
+    {
+        return $this->service('SCRM:SCRMService');
+    }
+
+    /**
+     * @return UserService
+     */
+    protected function getUserService()
+    {
+        return $this->service('User:UserService');
+    }
+
+    /**
+     * @return TokenService
+     */
+    protected function getTokenService()
+    {
+        return $this->service('User:TokenService');
     }
 }

@@ -10,6 +10,7 @@ use AppBundle\Common\SimpleValidator;
 use AppBundle\Common\ExtensionManager;
 use AppBundle\Common\EncryptionToolkit;
 use Codeages\Biz\Framework\Event\Event;
+use Codeages\Biz\Pay\Service\AccountService;
 use Topxia\Service\Common\ServiceKernel;
 use Symfony\Component\HttpFoundation\File\File;
 use Topxia\MobileBundleV2\Processor\BaseProcessor;
@@ -44,7 +45,7 @@ class UserProcessorImpl extends BaseProcessor implements UserProcessor
             return $this->createErrorResponse('error', '上传失败 ～请重新尝试!');
         }
 
-        $urlPath = $this->controller->get('web.twig.extension')->getFilePath($record['uri']);
+        $urlPath = $this->getContainer()->get('web.twig.extension')->getFilePath($record['uri']);
         if ($this->isAbsoluteUrl($urlPath)) {
             $url = $this->request->getScheme().':'.ltrim($urlPath, ':');
         } else {
@@ -339,6 +340,7 @@ class UserProcessorImpl extends BaseProcessor implements UserProcessor
         }
         $userProfile = $this->controller->getUserService()->getUserProfile($userId);
         $userProfile = $this->filterUserProfile($userProfile);
+        $user['havePayPassword'] = $this->getAccountService()->isPayPasswordSetted($user['id']) ? 1 : -1;
         $user = array_merge($user, $userProfile);
 
         return $this->controller->filterUser($user);
@@ -349,6 +351,11 @@ class UserProcessorImpl extends BaseProcessor implements UserProcessor
         $token = $this->controller->getToken($this->request);
         if (!empty($token)) {
             $user = $this->controller->getUserByToken($this->request);
+            $device = $this->controller->getPushDeviceService()->getPushDeviceByUserId($user['id']);
+            if (!empty($device)) {
+                $device = $this->controller->getPushDeviceService()->updatePushDevice($device['id'], array('userId' => 0));
+                $this->controller->getPushDeviceService()->getPushSdk()->setDeviceActive($device['regId'], 0);
+            }
             $this->log('user_logout', '用户退出', array(
                 'userToken' => $user, )
             );
@@ -478,7 +485,7 @@ class UserProcessorImpl extends BaseProcessor implements UserProcessor
         $result = array('meta' => null);
 
         $auth = $this->getSettingService()->get('auth', array());
-        if (isset($auth['register_mode']) && 'closed' == $auth['register_mode']) {
+        if (isset($auth['register_enabled']) && 'closed' == $auth['register_enabled']) {
             return $this->createErrorResponse('register_closed', '系统暂时关闭注册，请联系管理员');
         }
 
@@ -655,6 +662,7 @@ class UserProcessorImpl extends BaseProcessor implements UserProcessor
             $userProfile = $this->controller->getUserService()->getUserProfile($oldToken['userId']);
             $userProfile = $this->filterUserProfile($userProfile);
             $user = array_merge($user, $userProfile);
+            $user['havePayPassword'] = $this->getAccountService()->isPayPasswordSetted($user['id']) ? 1 : -1;
 
             $this->getTokenService()->deleteTokenByTypeAndUserId(MobileBaseController::TOKEN_TYPE, $user['id']);
 
@@ -662,6 +670,9 @@ class UserProcessorImpl extends BaseProcessor implements UserProcessor
                 'userId' => $user['id'],
                 'duration' => 3600 * 24 * 30,
             ));
+
+            $this->controller->setCurrentUser($user['id'], $this->request);
+            $this->controller->getUserService()->markLoginInfo('app');
 
             $biz = ServiceKernel::instance()->getBiz();
             $biz['dispatcher']->dispatch('user.login', new Event($user));
@@ -709,15 +720,14 @@ class UserProcessorImpl extends BaseProcessor implements UserProcessor
         $userProfile = $this->controller->getUserService()->getUserProfile($user['id']);
         $userProfile = $this->filterUserProfile($userProfile);
         $user = array_merge($user, $userProfile);
+        $user['havePayPassword'] = $this->getAccountService()->isPayPasswordSetted($user['id']) ? 1 : -1;
 
         $result = array(
             'token' => $token,
             'user' => $this->controller->filterUser($user),
         );
 
-        $this->controller->getLogService()->info(MobileBaseController::MOBILE_MODULE, 'user_login', '用户登录', array(
-            'username' => $username,
-        ));
+        $this->controller->getUserService()->markLoginInfo('app');
 
         //登录后获取通知
         $this->getBatchNotificationService()->checkoutBatchNotification($user['id']);
@@ -869,7 +879,7 @@ class UserProcessorImpl extends BaseProcessor implements UserProcessor
         $result = $this->getMessageService()->getConversationByFromIdAndToId($fromId, $toId);
         if (!empty($result)) {
             $fromUser = $this->controller->getUserService()->getUser($fromId);
-            $result['fromUserName'] = $fromUser['nickname'];
+            $result['fromUserName'] = ($fromUser['destroyed'] == 1) ? '帐号已注销' : $fromUser['nickname'];
         }
 
         return $result;
@@ -965,5 +975,13 @@ class UserProcessorImpl extends BaseProcessor implements UserProcessor
     protected function getBatchNotificationService()
     {
         return ServiceKernel::instance()->createService('User:BatchNotificationService');
+    }
+
+    /**
+     * @return AccountService
+     */
+    protected function getAccountService()
+    {
+        return ServiceKernel::instance()->createService('Pay:AccountService');
     }
 }

@@ -6,7 +6,7 @@ use AppBundle\Common\Exception\AbstractException;
 
 class MoneyCardException extends AbstractException
 {
-    const EXCEPTION_MODUAL = 56;
+    const EXCEPTION_MODULE = 56;
 
     const MONEY_INVALID = 5005601;
 
@@ -28,7 +28,11 @@ class MoneyCardException extends AbstractException
 
     const UNLOCK_NOT_INVALID_CARD = 5005610;
 
-    public $messages = array(
+    const PASSWORD_INVALID = 5005611;
+
+    const BATCH_TOKEN_INVALID = 5005612;
+
+    public $messages = [
         5005601 => 'exception.money_card.money_invalid',
         5005602 => 'exception.money_card.coin_invalid',
         5005603 => 'exception.money_card.cardlength_invalid',
@@ -39,5 +43,7 @@ class MoneyCardException extends AbstractException
         5005608 => 'exception.money_card.duplicate_card',
         5005609 => 'exception.money_card.batch_status_equal_invalid',
         5005610 => 'exception.money_card.unlock_not_invalid_card',
-    );
+        5005611 => 'exception.money_card.password_invalid',
+        5005612 => 'exception.money_card.batch_token_invalid',
+    ];
 }

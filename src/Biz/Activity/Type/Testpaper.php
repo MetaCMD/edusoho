@@ -2,28 +2,38 @@
 
 namespace Biz\Activity\Type;
 
+use AppBundle\Common\ArrayToolkit;
 use Biz\Activity\ActivityException;
 use Biz\Activity\Config\Activity;
-use AppBundle\Common\ArrayToolkit;
 use Biz\Activity\Service\ActivityService;
-use Biz\Testpaper\Service\TestpaperService;
 use Biz\Activity\Service\TestpaperActivityService;
+use Biz\Testpaper\Service\TestpaperService;
+use Codeages\Biz\ItemBank\Answer\Service\AnswerRecordService;
+use Codeages\Biz\ItemBank\Answer\Service\AnswerReportService;
+use Codeages\Biz\ItemBank\Answer\Service\AnswerSceneService;
+use Codeages\Biz\ItemBank\Answer\Service\AnswerService;
+use Codeages\Biz\ItemBank\Assessment\Service\AssessmentService;
 
 class Testpaper extends Activity
 {
+    // 考试及格后显示答案
+    const ANSWER_MODE_PASSED = 1;
+
     protected function registerListeners()
     {
-        return array(
+        return [
             'activity.created' => 'Biz\Activity\Listener\TestpaperActivityCreateListener',
-        );
+        ];
     }
 
     public function get($targetId)
     {
         $activity = $this->getTestpaperActivityService()->getActivity($targetId);
         if ($activity) {
-            $testPaper = $this->getTestpaperService()->getTestpaper($activity['mediaId']);
-            $activity['testpaper'] = $testPaper;
+            $testpaper = $this->getAssessmentService()->getAssessment($activity['mediaId']);
+            $activity['testpaper'] = $testpaper;
+            $activity['answerScene'] = $this->getAnswerSceneService()->get($activity['answerSceneId']);
+            $activity = $this->filterActivity($activity, $activity['answerScene']);
         }
 
         return $activity;
@@ -38,10 +48,40 @@ class Testpaper extends Activity
     {
         $fields = $this->filterFields($fields);
 
-        return $this->getTestpaperActivityService()->createActivity($fields);
+        try {
+            $this->getBiz()['db']->beginTransaction();
+
+            $answerScene = $this->getAnswerSceneService()->create([
+                'name' => $fields['title'],
+                'limited_time' => $fields['limitedTime'],
+                'do_times' => $fields['doTimes'],
+                'redo_interval' => $fields['redoInterval'],
+                'need_score' => 1,
+                'start_time' => $fields['startTime'],
+                'pass_score' => empty($fields['passScore']) ? 0 : $fields['passScore'],
+                'enable_facein' => empty($fields['enable_facein']) ? 0 : $fields['enable_facein'],
+            ]);
+
+            $testpaperActivity = $this->getTestpaperActivityService()->createActivity([
+                'mediaId' => $fields['mediaId'],
+                'checkType' => empty($fields['checkType']) ? '' : $fields['checkType'],
+                'requireCredit' => empty($fields['requireCredit']) ? 0 : $fields['requireCredit'],
+                'answerSceneId' => $answerScene['id'],
+                'finishCondition' => $fields['finishCondition'],
+                'answerMode' => $fields['answerMode'],
+                'customComments' => $fields['customComments'],
+            ]);
+
+            $this->getBiz()['db']->commit();
+
+            return $testpaperActivity;
+        } catch (\Exception $e) {
+            $this->getBiz()['db']->rollback();
+            throw $e;
+        }
     }
 
-    public function copy($activity, $config = array())
+    public function copy($activity, $config = [])
     {
         if ('testpaper' !== $activity['mediaType']) {
             return null;
@@ -49,37 +89,43 @@ class Testpaper extends Activity
 
         $testpaperActivity = $this->get($activity['mediaId']);
 
-        $newExt = array(
-            'testpaperId' => empty($config['testId']) ? 0 : $config['testId'],
-            'doTimes' => $testpaperActivity['doTimes'],
-            'redoInterval' => $testpaperActivity['redoInterval'],
-            'limitedTime' => $testpaperActivity['limitedTime'],
+        $newExt = [
+            'title' => $activity['title'],
+            'startTime' => $activity['startTime'],
+            'finishData' => $activity['finishData'],
+            'testpaperId' => $testpaperActivity['mediaId'],
+            'doTimes' => $testpaperActivity['answerScene']['do_times'],
+            'redoInterval' => $testpaperActivity['answerScene']['redo_interval'],
+            'limitedTime' => $testpaperActivity['answerScene']['limited_time'],
+            'enable_facein' => $testpaperActivity['answerScene']['enable_facein'],
             'checkType' => $testpaperActivity['checkType'],
             'requireCredit' => $testpaperActivity['requireCredit'],
             'testMode' => $testpaperActivity['testMode'],
             'finishCondition' => $testpaperActivity['finishCondition'],
-        );
+            'answerMode' => $testpaperActivity['answerMode'],
+        ];
 
         return $this->create($newExt);
     }
 
     public function sync($sourceActivity, $activity)
     {
-        $sourceExt = $this->getTestpaperActivityService()->getActivity($sourceActivity['mediaId']);
-        $ext = $this->getTestpaperActivityService()->getActivity($activity['mediaId']);
-        $testPaper = $this->getTestpaperService()->getTestpaperByCopyIdAndCourseSetId(
-            $sourceExt['mediaId'],
-            $activity['fromCourseSetId']
-        );
+        $sourceExt = $this->get($sourceActivity['mediaId']);
+        $ext = $this->get($activity['mediaId']);
 
-        $ext['testpaperId'] = $testPaper['id'];
-        $ext['doTimes'] = $sourceExt['doTimes'];
-        $ext['redoInterval'] = $sourceExt['redoInterval'];
-        $ext['limitedTime'] = $sourceExt['limitedTime'];
+        $ext['startTime'] = $sourceActivity['startTime'];
+        $ext['title'] = $sourceActivity['title'];
+        $ext['finishData'] = $sourceActivity['finishData'];
+        $ext['testpaperId'] = $sourceExt['mediaId'];
+        $ext['doTimes'] = $sourceExt['answerScene']['do_times'];
+        $ext['redoInterval'] = $sourceExt['answerScene']['redo_interval'];
+        $ext['limitedTime'] = $sourceExt['answerScene']['limited_time'];
+        $ext['enable_facein'] = $sourceExt['answerScene']['enable_facein'];
         $ext['checkType'] = $sourceExt['checkType'];
         $ext['requireCredit'] = $sourceExt['requireCredit'];
         $ext['testMode'] = $sourceExt['testMode'];
         $ext['finishCondition'] = $sourceExt['finishCondition'];
+        $ext['answerMode'] = $sourceExt['answerMode'];
 
         return $this->update($ext['id'], $ext, $activity);
     }
@@ -92,14 +138,37 @@ class Testpaper extends Activity
             throw ActivityException::NOTFOUND_ACTIVITY();
         }
 
-        //引用传递，当考试时间设置改变时，时间值也改变
-        if (0 == $fields['doTimes'] || 'normal' == $fields['testMode']) {
-            $fields['startTime'] = 0;
-        }
-
         $filterFields = $this->filterFields($fields);
 
-        return $this->getTestpaperActivityService()->updateActivity($activity['id'], $filterFields);
+        try {
+            $this->getBiz()['db']->beginTransaction();
+
+            $answerScene = $this->getAnswerSceneService()->update($activity['answerScene']['id'], [
+                'name' => $filterFields['title'],
+                'limited_time' => $filterFields['limitedTime'],
+                'do_times' => $filterFields['doTimes'],
+                'redo_interval' => $filterFields['redoInterval'],
+                'start_time' => $filterFields['startTime'],
+                'pass_score' => empty($filterFields['passScore']) ? 0 : $filterFields['passScore'],
+                'enable_facein' => empty($filterFields['enable_facein']) ? 0 : $filterFields['enable_facein'],
+            ]);
+
+            $testpaperActivity = $this->getTestpaperActivityService()->updateActivity($activity['id'], [
+                'mediaId' => $filterFields['mediaId'],
+                'checkType' => empty($filterFields['checkType']) ? '' : $filterFields['checkType'],
+                'requireCredit' => empty($filterFields['requireCredit']) ? 0 : $filterFields['requireCredit'],
+                'finishCondition' => $filterFields['finishCondition'],
+                'answerMode' => $filterFields['answerMode'],
+                'customComments' => $filterFields['customComments'],
+            ]);
+
+            $this->getBiz()['db']->commit();
+
+            return $testpaperActivity;
+        } catch (\Exception $e) {
+            $this->getBiz()['db']->rollback();
+            throw $e;
+        }
     }
 
     public function delete($targetId)
@@ -112,22 +181,19 @@ class Testpaper extends Activity
         $user = $this->getCurrentUser();
 
         $activity = $this->getActivityService()->getActivity($activityId, true);
-        $testpaper = $activity['ext']['testpaper'];
+        $testpaperActivity = $activity['ext'];
 
-        $result = $this->getTestpaperService()->getUserLatelyResultByTestId(
-            $user['id'],
-            $testpaper['id'],
-            $activity['fromCourseId'],
-            $activity['id'],
-            'testpaper'
+        $answerRecord = $this->getAnswerRecordService()->getLatestAnswerRecordByAnswerSceneIdAndUserId(
+            $testpaperActivity['answerScene']['id'],
+            $user['id']
         );
 
-        if (empty($result)) {
+        if (empty($answerRecord)) {
             return false;
         }
         if (!in_array(
-            $result['status'],
-            array('reviewing', 'finished')
+            $answerRecord['status'],
+            [AnswerService::ANSWER_RECORD_STATUS_REVIEWING, AnswerService::ANSWER_RECORD_STATUS_FINISHED]
         )) {
             return false;
         }
@@ -136,8 +202,8 @@ class Testpaper extends Activity
             return true;
         }
 
-        $passScore = ceil($testpaper['score'] * $activity['finishData']);
-        if ('score' === $activity['finishType'] && $result['score'] >= $passScore) {
+        $answerReport = $this->getAnswerReportService()->getSimple($answerRecord['answer_report_id']);
+        if (AnswerService::ANSWER_RECORD_STATUS_FINISHED == $answerRecord['status'] && 'score' === $activity['finishType'] && $answerReport['score'] >= $testpaperActivity['finishCondition']['finishScore']) {
             return true;
         }
 
@@ -146,21 +212,38 @@ class Testpaper extends Activity
 
     protected function filterFields($fields)
     {
+        $testPaper = $this->getAssessmentService()->getAssessment($fields['testpaperId']);
+        $fields['passScore'] = empty($fields['finishData']) ? 0 : round(
+            $testPaper['total_score'] * $fields['finishData'],
+            0
+        );
+
         if (!empty($fields['finishType'])) {
-            if ($fields['finishType'] == 'score') {
-                $testPaper = $this->getTestpaperService()->getTestpaper($fields['testpaperId']);
-                $fields['finishCondition'] = array(
+            if ('score' == $fields['finishType']) {
+                $fields['finishCondition'] = [
                     'type' => 'score',
-                    'finishScore' => empty($fields['finishData']) ? 0 : round($testPaper['score'] * $fields['finishData'], 0),
-                );
+                    'finishScore' => $fields['passScore'],
+                ];
             } else {
-                $fields['finishCondition'] = array();
+                $fields['finishCondition'] = [];
+            }
+        }
+
+        $fields['customComments'] = [];
+        if (!empty($fields['start'])) {
+            foreach ($fields['start'] as $key => $val) {
+                $fields['customComments'][] = [
+                    'start' => $val,
+                    'end' => $fields['end'][$key],
+                    'comment' => $fields['comment'][$key],
+                ];
             }
         }
 
         $filterFields = ArrayToolkit::parts(
             $fields,
-            array(
+            [
+                'title',
                 'testpaperId',
                 'doTimes',
                 'redoInterval',
@@ -170,7 +253,12 @@ class Testpaper extends Activity
                 'requireCredit',
                 'testMode',
                 'finishCondition',
-            )
+                'startTime',
+                'passScore',
+                'enable_facein',
+                'answerMode',
+                'customComments',
+            ]
         );
 
         if (isset($filterFields['length'])) {
@@ -180,12 +268,35 @@ class Testpaper extends Activity
 
         if (isset($filterFields['doTimes']) && 0 == $filterFields['doTimes']) {
             $filterFields['testMode'] = 'normal';
+            $filterFields['answerMode'] = isset($fields['answerMode']) ? $fields['answerMode'] : 0;
+        } else {
+            $filterFields['answerMode'] = 0;
+        }
+
+        /* #73707
+        *不限考试次数时,即:无考试开始时间限制,且startTime默认置0.
+        *单次考试次数时,且不限考试开始时间,即:startTime补充置0.
+        */
+        if ((isset($filterFields['doTimes']) && 0 == $filterFields['doTimes']) || (isset($filterFields['testMode']) && 'normal' == $filterFields['testMode'])) {
+            $filterFields['startTime'] = 0;
         }
 
         $filterFields['mediaId'] = $filterFields['testpaperId'];
         unset($filterFields['testpaperId']);
 
         return $filterFields;
+    }
+
+    protected function filterActivity($activity, $scene)
+    {
+        if (!empty($scene)) {
+            $activity['doTimes'] = $scene['do_times'];
+            $activity['redoInterval'] = $scene['redo_interval'];
+            $activity['limitedTime'] = $scene['limited_time'];
+            $activity['testMode'] = !empty($scene['start_time']) ? 'realTime' : 'normal';
+        }
+
+        return $activity;
     }
 
     /**
@@ -210,5 +321,37 @@ class Testpaper extends Activity
     protected function getTestpaperService()
     {
         return $this->getBiz()->service('Testpaper:TestpaperService');
+    }
+
+    /**
+     * @return AssessmentService
+     */
+    protected function getAssessmentService()
+    {
+        return $this->getBiz()->service('ItemBank:Assessment:AssessmentService');
+    }
+
+    /**
+     * @return AnswerSceneService
+     */
+    protected function getAnswerSceneService()
+    {
+        return $this->getBiz()->service('ItemBank:Answer:AnswerSceneService');
+    }
+
+    /**
+     * @return AnswerRecordService
+     */
+    protected function getAnswerRecordService()
+    {
+        return $this->getBiz()->service('ItemBank:Answer:AnswerRecordService');
+    }
+
+    /**
+     * @return AnswerReportService
+     */
+    protected function getAnswerReportService()
+    {
+        return $this->getBiz()->service('ItemBank:Answer:AnswerReportService');
     }
 }

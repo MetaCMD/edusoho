@@ -6,7 +6,7 @@ use AppBundle\Common\Exception\AbstractException;
 
 class OrderPayCheckException extends AbstractException
 {
-    const EXCEPTION_MODUAL = 26;
+    const EXCEPTION_MODULE = 26;
 
     const ERROR_COIN_AMOUNT = 5002601;
     const MISSING_PAY_PASSWORD = 5002602;
@@ -18,8 +18,11 @@ class OrderPayCheckException extends AbstractException
     const COUPON_HAD_BEEN_USED = 5002608;
     const NOTFOUND_PRODUCT = 4042609;
     const INSTANCE_ERROR = 5002610;
+    const UNABLE_PAY = 5002611;
+    const GOODS_CLOSED = 5002612;
+    const VIP_APP_UPGRADE = 5002613;
 
-    public $messages = array(
+    public $messages = [
         5002601 => 'order.pay_check_msg.coin_amount_error',
         5002602 => 'order.pay_check_msg.missing_pay_password',
         5002603 => 'order.pay_check_msg.balance_not_enough',
@@ -30,5 +33,8 @@ class OrderPayCheckException extends AbstractException
         5002608 => 'order.pay_check_msg.coupon_had_been_used',
         4042609 => 'order.pay_check_msg.product_not_found',
         5002610 => 'exception.order_pay_check.instance_error',
-    );
+        5002611 => 'exception.order_pay_check.unable_pay',
+        5002612 => 'order.pay_check_msg.goods_closed',
+        5002613 => 'exception.order_pay_check.vip.app_upgrade',
+    ];
 }

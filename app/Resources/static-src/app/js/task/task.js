@@ -3,6 +3,7 @@ import TaskUi from './widget/task-ui';
 import TaskPipe from './widget/task-pipe';
 import Emitter from 'common/es-event-emitter';
 import PagedCourseLesson from 'app/js/courseset/show/paged-course-lesson';
+import 'store';
 
 export default class TaskShow extends Emitter {
   constructor({ element, mode }) {
@@ -24,6 +25,33 @@ export default class TaskShow extends Emitter {
       this.initTaskPipe();
       this.initLearnBtn();
     }
+    this.initLearnContent();
+    this.initPlaySequence();
+
+  }
+
+  initPlaySequence() {
+    if (!$('.play-continue-switch')) {
+      return ;
+    }
+    let playMediaSequence = (undefined === store.get('PLAY_MEDIA_SEQUENCE')) ? 1 : store.get('PLAY_MEDIA_SEQUENCE');
+    store.set('PLAY_MEDIA_SEQUENCE', playMediaSequence);
+    if (playMediaSequence === 0) {
+      $('.js-play-sequence').removeClass('checked');
+    }
+    $('.play-continue-switch').removeClass('hidden');
+
+
+    $('.js-play-sequence').on('click', (event) => {
+      const $target = $(event.target);
+      if ($target.hasClass('checked')) {
+        $target.removeClass('checked');
+        store.set('PLAY_MEDIA_SEQUENCE', 0);
+      } else {
+        $target.addClass('checked');
+        store.set('PLAY_MEDIA_SEQUENCE', 1);
+      }
+    });
   }
 
   initPlugin() {
@@ -45,6 +73,10 @@ export default class TaskShow extends Emitter {
           $nextBtn.removeClass('disabled').attr('href', $nextBtn.data('url'));
         }
         this.ui.learned();
+        if ($('.js-learn-content').find('.js-finish-tip').length > 0) {
+          $('.js-learn-content').find('.js-finish-tip').html(Translator.trans('activity.manage.finished_tips'));
+          this.initLearnContent();
+        }
       });
     });
   }
@@ -54,10 +86,13 @@ export default class TaskShow extends Emitter {
     this.eventEmitter.addListener('finish', response => {
       this._receiveFinish(response);
     });
+    this.eventEmitter.addListener('start', response => {
+      this._receiveDoing(response);
+    });
   }
 
   _receiveFinish(response) {
-    const nextTaskUrl = this.element.find('#task-content-iframe').data('nextTaskUrl');
+
     if ($('input[name="task-result-status"]', $('#js-hidden-data')).val() != 'finish') {
       $.get($('.js-learned-prompt').data('url'), html => {
         $('.js-learned-prompt').attr('data-content', html);
@@ -69,11 +104,50 @@ export default class TaskShow extends Emitter {
           $nextBtn.removeClass('disabled').attr('href', $nextBtn.data('url'));
         }
         $('input[name="task-result-status"]', $('#js-hidden-data')).val('finish');
+        this._dealSequence(response, 'prompt');
+
       });
+    } else {
+      this._dealSequence(response);
     }
-    if (nextTaskUrl && response.playerMsg && response.playerMsg.mode == 'sequence') {
-      window.location.href = nextTaskUrl;
+  }
+
+  _dealSequence(response, trigger = 'player') {
+    //自动下一课时
+    console.log(response);
+    let sequence = store.get('PLAY_MEDIA_SEQUENCE', undefined);
+    if (sequence === 1) {
+      const nextTaskUrl = this.element.find('#task-content-iframe').data('nextTaskUrl');
+      const nextTask = this.element.find('#task-content-iframe').data('nextTask');
+
+      if (nextTaskUrl && nextTask.type && ['audio', 'video'].includes(nextTask.type)) {
+        if (trigger === 'prompt' && response.playerEnd === true) {
+          window.location.href = nextTaskUrl;
+          return;
+        }
+        let finishEvent = response.waitingEventData && response.waitingEventData['finish'] ? response.waitingEventData['finish']['data']['playerMsg'] : {};
+        let playerCurrentTime = finishEvent.currentTime||0;
+        let playerDuration = finishEvent.duration||0;
+        //player.ended 事件不一定是播放到最后一秒，所以必须判断是否播放轴到了最后
+        if (playerCurrentTime !== 0 && playerDuration !== 0 && (playerDuration - playerCurrentTime < 2)) {
+          window.location.href = nextTaskUrl;
+        }
+      }
     }
+
+  }
+
+  _receiveDoing(response) {
+    if ($('.js-learn-content').find('.js-finish-time').length > 0) {
+      let time = $('.js-learn-content').find('.js-finish-tip').data('time');
+      let remainTime = time > response.learnedTime ? Math.ceil((time - response.learnedTime) / 60) : 0;
+      $('.js-learn-content').find('.js-finish-time').html(remainTime + Translator.trans('activity.live.minute'));
+      this.initLearnContent();
+    }
+  }
+
+  initLearnContent() {
+    $('.js-learn-prompt').attr('data-content', $('.js-learn-content').html());
   }
 
   initSidebar() {

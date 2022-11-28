@@ -2,21 +2,28 @@
 
 namespace AppBundle\Controller;
 
+use AppBundle\Common\ArrayToolkit;
 use Biz\Activity\Service\ActivityService;
 use Biz\Classroom\Service\ClassroomService;
+use Biz\Content\FileException;
+use Biz\Course\CourseException;
 use Biz\Course\Service\CourseService;
 use Biz\Course\Service\CourseSetService;
 use Biz\Course\Service\LearningDataAnalysisService;
+use Biz\Course\Service\MaterialService;
 use Biz\Course\Service\MemberService;
+use Biz\FaceInspection\Service\FaceInspectionService;
+use Biz\File\Service\UploadFileService;
 use Biz\Task\Service\TaskResultService;
 use Biz\Task\Service\TaskService;
 use Biz\Task\TaskException;
 use Biz\User\Service\TokenService;
+use Biz\User\TokenException;
 use Biz\User\UserException;
-use Codeages\Biz\Framework\Service\Exception\AccessDeniedException as ServiceAccessDeniedException;
+use Biz\Visualization\Service\LearnControlService;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use Symfony\Component\Security\Core\Exception\AccessDeniedException;
-use AppBundle\Common\ArrayToolkit;
 
 class TaskController extends BaseController
 {
@@ -39,14 +46,14 @@ class TaskController extends BaseController
             $task = $this->tryLearnTask($courseId, $id, (bool) $preview);
             $activity = $this->getActivityService()->getActivity($task['activityId'], true);
 
-            if (!empty($activity['ext']) && !empty($activity['ext']['mediaId'])) {
-                $media = $this->getUploadFileService()->getFile($activity['ext']['mediaId']);
+            if (!empty($activity['ext']) && !empty($activity['ext']['file'])) {
+                $media = $activity['ext']['file'];
             }
 
-            $media = !empty($media) ? $media : array();
+            $media = !empty($media) ? $media : [];
         } catch (AccessDeniedException $accessDeniedException) {
             return $this->handleAccessDeniedException($accessDeniedException, $request, $id);
-        } catch (ServiceAccessDeniedException $deniedException) {
+        } catch (CourseException $deniedException) {
             return $this->handleAccessDeniedException($deniedException, $request, $id);
         }
 
@@ -56,36 +63,43 @@ class TaskController extends BaseController
         $member = $this->getCourseMemberService()->getCourseMember($courseId, $user['id']);
 
         if ($member['locked']) {
-            return $this->redirectToRoute('my_course_show', array('id' => $courseId));
+            return $this->redirectToRoute('my_course_show', ['id' => $courseId]);
         }
 
-        if ($this->isCourseExpired($course) && !$this->getCourseService()->hasCourseManagerRole($course['id'])) {
-            return $this->redirectToRoute('course_show', array('id' => $courseId));
-        }
+//        if ($this->isCourseExpired($course) && !$this->getCourseService()->hasCourseManagerRole($course['id'])) {
+//            return $this->redirectToRoute('course_show', ['id' => $courseId]);
+//        }
 
-        if (null !== $member && 'teacher' != $member['role'] && !$this->getCourseMemberService()->isMemberNonExpired(
+        if (null !== $member && 'teacher' !== $member['role'] && !$this->getCourseMemberService()->isMemberNonExpired(
                 $course,
                 $member
             )
         ) {
-            return $this->redirect($this->generateUrl('my_course_show', array('id' => $courseId)));
+            return $this->redirect($this->generateUrl('my_course_show', ['id' => $courseId]));
         }
 
         $activityConfig = $this->getActivityConfigByTask($task);
 
-        if (null !== $member && 'student' === $member['role'] && $activityConfig->allowTaskAutoStart($task)) {
-            $this->getTaskService()->trigger(
-                $task['id'],
-                'start',
-                array(
-                    'taskId' => $task['id'],
-                )
-            );
+        if (null !== $member && 'student' === $member['role']) {
+            $wrappedTasks = ArrayToolkit::index($this->getTaskService()->wrapTaskResultToTasks($courseId, $this->getTaskService()->findTasksByCourseId($courseId)), 'id');
+            if (!empty($wrappedTasks[$task['id']]) && $wrappedTasks[$task['id']]['lock']) {
+                return $this->createMessageResponse('info', 'message_response.task_locked.message', '', 3, $this->generateUrl('my_course_show', ['id' => $courseId]));
+            }
+
+            if ($activityConfig->allowTaskAutoStart($task)) {
+                $this->getTaskService()->trigger(
+                    $task['id'],
+                    'start',
+                    [
+                        'taskId' => $task['id'],
+                    ]
+                );
+            }
         }
 
         $taskResult = $this->getTaskResultService()->getUserTaskResultByTaskId($id);
         if (empty($taskResult)) {
-            $taskResult = array('status' => 'none');
+            $taskResult = ['status' => 'none'];
         }
 
         if ('finish' == $taskResult['status']) {
@@ -104,9 +118,22 @@ class TaskController extends BaseController
             }
         }
 
+        $activity = $this->getActivityService()->getActivity($task['activityId'], true);
+        if ('testpaper' == $activity['mediaType'] && !empty($activity['ext']['answerScene']['enable_facein'])) {
+            $face = $this->getFaceInspectionService()->getUserFaceByUserId($user->getId());
+            if (empty($face)) {
+                return $this->redirectToRoute(
+                    'face_inspection_select',
+                    ['goto' => $this->generateUrl('course_task_show', ['courseId' => $courseId, 'id' => $task['id']])]
+                );
+            }
+        }
+
+        $learnControlSetting = $this->getLearnControlService()->getMultipleLearnSetting();
+
         return $this->render(
             'task/show.html.twig',
-            array(
+            [
                 'course' => $course,
                 'member' => $member,
                 'task' => $task,
@@ -116,22 +143,23 @@ class TaskController extends BaseController
                 'finishedRate' => empty($finishedRate) ? 0 : $finishedRate,
                 'allowEventAutoTrigger' => $activityConfig->allowEventAutoTrigger(),
                 'media' => $media,
-            )
+                'learnControlSetting' => $learnControlSetting,
+            ]
         );
     }
 
     protected function getPreviousTaskAndTaskResult($task)
     {
-        $previousTask = $nextTask = array();
-        $condition = array(
+        $previousTask = $nextTask = [];
+        $condition = [
             'courseId' => $task['courseId'],
             'status' => 'published',
             'seq_LT' => $task['seq'],
-        );
-        $previousTasks = $this->getTaskService()->searchTasks($condition, array('seq' => 'DESC'), 0, 1);
+        ];
+        $previousTasks = $this->getTaskService()->searchTasks($condition, ['seq' => 'DESC'], 0, 1);
         unset($condition['seq_LT']);
         $condition['seq_GT'] = $task['seq'];
-        $nextTasks = $this->getTaskService()->searchTasks($condition, array('seq' => 'ASC'), 0, 1);
+        $nextTasks = $this->getTaskService()->searchTasks($condition, ['seq' => 'ASC'], 0, 1);
 
         if (!empty($previousTasks)) {
             $previousTask = array_pop($previousTasks);
@@ -140,7 +168,7 @@ class TaskController extends BaseController
             $nextTask = array_pop($nextTasks);
         }
 
-        return array($previousTask, $nextTask);
+        return [$previousTask, $nextTask];
     }
 
     protected function getActivityConfigByTask($task)
@@ -165,17 +193,17 @@ class TaskController extends BaseController
 
         //课程不可购买，且任务不免费
         if (empty($task['isFree']) && empty($course['buyable']) && empty($course['tryLookable'])) {
-            return $this->render('task/preview-notice-modal.html.twig', array('course' => $course));
+            return $this->render('task/preview-notice-modal.html.twig', ['course' => $course]);
         }
 
         //课程关闭
         if (!empty($courseSet['status']) && 'published' != $courseSet['status']) {
-            return $this->render('task/preview-notice-modal.html.twig', array('courseSet' => $courseSet));
+            return $this->render('task/preview-notice-modal.html.twig', ['courseSet' => $courseSet]);
         }
 
         //教学计划关闭
         if (!empty($course['status']) && 'published' != $course['status']) {
-            return $this->render('task/preview-notice-modal.html.twig', array('course' => $course));
+            return $this->render('task/preview-notice-modal.html.twig', ['course' => $course]);
         }
 
         //课时不免费并且不满足：
@@ -195,13 +223,13 @@ class TaskController extends BaseController
                 $this->createNewException(UserException::UN_LOGIN());
             }
             if ($course['parentId'] > 0) {
-                return $this->redirect($this->generateUrl('classroom_buy_hint', array('courseId' => $course['id'])));
+                return $this->redirect($this->generateUrl('classroom_buy_hint', ['courseId' => $course['id']]));
             }
 
             return $this->forward(
                 'AppBundle:Course/CourseOrder:buy',
-                array('id' => $courseId),
-                array('preview' => true, 'lessonId' => $task['id'])
+                ['id' => $courseId],
+                ['preview' => true, 'lessonId' => $task['id']]
             );
         }
 
@@ -215,12 +243,12 @@ class TaskController extends BaseController
         //TODO vip 插件改造 判断用户是否为VIP
         return $this->render(
             'task/preview.html.twig',
-            array(
+            [
                 'course' => $course,
                 'task' => $task,
                 'user' => $user,
                 'vipStatus' => false,
-            )
+            ]
         );
     }
 
@@ -237,7 +265,7 @@ class TaskController extends BaseController
             $this->createNewException(TaskException::FORBIDDEN_PREVIEW_TASK());
         }
 
-        return $this->forward('AppBundle:Activity/Activity:preview', array('task' => $task));
+        return $this->forward('AppBundle:Activity/Activity:preview', ['task' => $task]);
     }
 
     private function canPreviewTask($task, $course)
@@ -261,27 +289,27 @@ class TaskController extends BaseController
         $user = $this->getCurrentUser();
 
         $classroom = $this->getClassroomService()->getClassroomByCourseId($courseId);
-        $params = array('courseId' => $courseId, 'id' => $id);
+        $params = ['courseId' => $courseId, 'id' => $id];
         if ($classroom) {
             $params['classroomId'] = $classroom['id'];
         }
 
         $token = $this->getTokenService()->makeToken(
             'qrcode',
-            array(
+            [
                 'userId' => $user['id'],
-                'data' => array(
-                    'url' => $this->generateUrl('course_task_show', $params, true),
-                ),
+                'data' => [
+                    'url' => $this->generateUrl('course_task_show', $params, UrlGeneratorInterface::ABSOLUTE_URL),
+                ],
                 'times' => 1,
                 'duration' => 3600,
-            )
+            ]
         );
-        $url = $this->generateUrl('common_parse_qrcode', array('token' => $token['token']), true);
+        $url = $this->generateUrl('common_parse_qrcode', ['token' => $token['token']], UrlGeneratorInterface::ABSOLUTE_URL);
 
-        $response = array(
-            'img' => $this->generateUrl('common_qrcode', array('text' => $url), true),
-        );
+        $response = [
+            'img' => $this->generateUrl('common_qrcode', ['text' => $url], UrlGeneratorInterface::ABSOLUTE_URL),
+        ];
 
         return $this->createJsonResponse($response);
     }
@@ -297,10 +325,10 @@ class TaskController extends BaseController
 
         return $this->forward(
             'AppBundle:Activity/Activity:show',
-            array(
+            [
                 'task' => $task,
                 'preview' => $preview,
-            )
+            ]
         );
     }
 
@@ -309,13 +337,13 @@ class TaskController extends BaseController
         $preview = $request->query->get('preview', false);
 
         $this->tryLearnTask($courseId, $taskId);
-        $toolbars = array();
+        $toolbars = [];
         foreach ($this->get('extension.manager')->getTaskToolbars() as $toolbar) {
-            $toolbar['url'] = $this->generateUrl($toolbar['action'], array(
+            $toolbar['url'] = $this->generateUrl($toolbar['action'], [
                 'courseId' => $courseId,
                 'taskId' => $taskId,
                 'preview' => $preview,
-            ));
+            ]);
             $toolbar['name'] = $this->get('translator')->trans($toolbar['name']);
             $toolbars[] = $toolbar;
         }
@@ -323,17 +351,41 @@ class TaskController extends BaseController
         return $this->createJsonResponse($toolbars);
     }
 
+    protected function reStartTask($id)
+    {
+        $result = $this->getTaskService()->trigger(
+            $id,
+            'start',
+            [
+                'taskId' => $id,
+                'desc' => 'restart',
+            ]
+        );
+
+        return $this->createJsonResponse(
+            [
+                'result' => $result,
+                'lastTime' => time(),
+                'event' => 'start',
+            ]
+        );
+    }
+
     public function triggerAction(Request $request, $courseId, $id)
     {
         $eventName = 'doing';
-        $data = $request->request->get('data', array());
+        $data = $request->request->get('data', []);
         $data['taskId'] = $id;
 
         $this->getCourseService()->tryTakeCourse($courseId);
 
+        if (!empty($data['events']['restart'])) {
+            return $this->reStartTask($id);
+        }
+
         if (!empty($data['events']) || $this->validTaskLearnStat($request, $id)) {
             $result = $this->getTaskService()->trigger($id, $eventName, $data);
-            $result = $this->getTaskResultService()->updateTaskResult($result['id'], array('lastLearnTime' => isset($data['lastLearnTime']) ? $data['lastLearnTime'] : 0));
+            $result = $this->getTaskResultService()->updateTaskResult($result['id'], ['lastLearnTime' => isset($data['lastLearnTime']) ? $data['lastLearnTime'] : 0]);
             $data['valid'] = 1;
         } else {
             $result = $this->getTaskResultService()->getUserTaskResultByTaskId($id);
@@ -341,12 +393,12 @@ class TaskController extends BaseController
         }
 
         return $this->createJsonResponse(
-            array(
+            [
                 'result' => $result,
                 'lastTime' => time(),
                 'event' => $eventName,
                 'data' => $data,
-            )
+            ]
         );
     }
 
@@ -369,19 +421,23 @@ class TaskController extends BaseController
 
         return $this->render(
             'task/finish-result.html.twig',
-            array(
+            [
                 'result' => $result,
                 'task' => $task,
                 'nextTask' => $this->getTaskService()->getNextTask($task['id']),
                 'course' => $course,
                 'finishedRate' => $progress['percent'],
-            )
+            ]
         );
     }
 
     public function taskFinishedPromptAction($courseId, $id)
     {
         list($course) = $this->getCourseService()->tryTakeCourse($courseId);
+
+        if (!$this->getTaskService()->isFinished($id)) {
+            $this->createNewException(TaskException::CAN_NOT_FINISH());
+        }
         $result = $this->getTaskService()->finishTaskResult($id);
         $task = $this->getTaskService()->getTask($id);
 
@@ -389,19 +445,19 @@ class TaskController extends BaseController
 
         return $this->render(
             'task/task-finished-prompt.html.twig',
-            array(
+            [
                 'result' => $result,
                 'task' => $task,
                 'nextTask' => $this->getTaskService()->getNextTask($task['id']),
                 'course' => $course,
                 'finishedRate' => $progress['percent'],
-            )
+            ]
         );
     }
 
     public function finishConditionAction($task)
     {
-        $activity = $this->getActivityService()->getActivity($task['activityId'], true);
+        $activity = $this->getActivityService()->getActivity($task['activityId'], false);
         $activityConfigManage = $this->get('activity_config_manager');
         $installedActivity = $activityConfigManage->getInstalledActivity($activity['mediaType']);
 
@@ -412,25 +468,64 @@ class TaskController extends BaseController
                 return $container->renderRoute($activity, 'finish_tip');
             }
 
-            $conditions = empty($installedActivity['finish_condition']) ? array() : ArrayToolkit::index($installedActivity['finish_condition'], 'type');
+            $conditions = empty($installedActivity['finish_condition']) ? [] : ArrayToolkit::index($installedActivity['finish_condition'], 'type');
+            $taskResult = $this->getTaskResultService()->getTaskResultByTaskIdAndUserId($task['id'], $this->getCurrentUser()->getId());
 
-            return $this->render('task/finish-tip.html.twig', array(
+            return $this->render('task/finish-tip.html.twig', [
                 'activity' => $activity,
                 'conditions' => $conditions,
-            ));
+                'taskResult' => $taskResult,
+            ]);
         }
 
         $config = $this->getActivityConfig();
         $action = $config[$task['type']]['controller'].':finishCondition';
 
-        return $this->forward($action, array('activity' => $activity));
+        return $this->forward($action, ['activity' => $activity]);
+    }
+
+    public function downloadFileByTokenAction(Request $request, $courseId, $taskId, $token)
+    {
+        $token = $this->getTokenService()->verifyToken('file_download', $token);
+
+        if (!$token) {
+            throw TokenException::TOKEN_INVALID();
+        }
+
+        $task = $this->getTaskService()->getTask($taskId);
+
+        if (empty($task)) {
+            throw TaskException::NOTFOUND_TASK();
+        }
+
+        $materials = $this->getMaterialService()->findMaterialsByLessonIdAndSource($task['activityId'], 'coursematerial');
+        $fileIds = [];
+
+        foreach ($materials as $material) {
+            $fileIds[] = $material['fileId'];
+        }
+
+        $fileId = $token['data']['fileId'];
+        $tokenTaskId = $token['data']['taskId'];
+        $tokenCourseId = $token['data']['courseId'];
+
+        if (!in_array($fileId, $fileIds)) {
+            throw FileException::FILE_NOT_FOUND();
+        }
+
+        if ($tokenTaskId != $taskId || $tokenCourseId != $courseId || empty($fileId)) {
+            throw TokenException::TOKEN_INVALID();
+        }
+
+        return $this->forward('AppBundle:UploadFile:download', [
+            'request' => $request,
+            'fileId' => $fileId,
+        ]);
     }
 
     /**
      * 没有权限进行任务的时候的处理逻辑，目前只有学员动态跳转过来的时候跳转到教学计划营销页.
      *
-     * @param \Exception $exception
-     * @param Request    $request
      * @param  $taskId
      *
      * @throws \Exception
@@ -454,9 +549,9 @@ class TaskController extends BaseController
             3,
             $this->generateUrl(
                 'course_show',
-                array(
+                [
                     'id' => $task['courseId'],
-                )
+                ]
             )
         );
     }
@@ -492,7 +587,7 @@ class TaskController extends BaseController
     {
         $key = 'task.'.$taskId;
         $session = $request->getSession();
-        $taskStore = $session->get($key, array());
+        $taskStore = $session->get($key, []);
         $taskStore['start'] = time();
         $taskStore['lastTriggerTime'] = 0;
 
@@ -528,11 +623,11 @@ class TaskController extends BaseController
     protected function isCourseExpired($course)
     {
         return (
-                'date' == $course['expiryMode']
+                'date' === $course['expiryMode']
                 && ($course['expiryStartDate'] > time() || $course['expiryEndDate'] < time())
             )
             || (
-                'endDate' == $course['expiryMode'] && $course['expiryEndDate'] < time()
+                'end_date' === $course['expiryMode'] && $course['expiryEndDate'] < time()
             );
     }
 
@@ -619,5 +714,29 @@ class TaskController extends BaseController
     protected function getActivityConfig()
     {
         return $this->get('extension.manager')->getActivities();
+    }
+
+    /**
+     * @return MaterialService
+     */
+    protected function getMaterialService()
+    {
+        return $this->createService('Course:MaterialService');
+    }
+
+    /**
+     * @return FaceInspectionService
+     */
+    protected function getFaceInspectionService()
+    {
+        return $this->createService('FaceInspection:FaceInspectionService');
+    }
+
+    /**
+     * @return LearnControlService
+     */
+    protected function getLearnControlService()
+    {
+        return $this->createService('Visualization:LearnControlService');
     }
 }

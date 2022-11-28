@@ -2,7 +2,6 @@
 
 namespace Biz\Course\Service;
 
-use Biz\User\UserException;
 use Biz\System\Annotation\Log;
 
 interface CourseSetService
@@ -17,36 +16,6 @@ interface CourseSetService
 
     const NORMAL_TYPE = 'normal';
     const LIVE_TYPE = 'live';
-
-    /**
-     * collect course set.
-     *
-     * @param  $id
-     *
-     * @throws UserException
-     *
-     * @return bool
-     */
-    public function favorite($id);
-
-    /**
-     * cancel collected course set.
-     *
-     * @param  $id
-     *
-     * @throws UserException
-     *
-     * @return bool
-     */
-    public function unfavorite($id);
-
-    /**
-     * @param int $userId
-     * @param int $courseSetId
-     *
-     * @return bool
-     */
-    public function isUserFavorite($userId, $courseSetId);
 
     public function tryManageCourseSet($id);
 
@@ -69,18 +38,16 @@ interface CourseSetService
     public function searchUserLearnCourseSets($userId, $start, $limit);
 
     /**
-     * @param int   $userId
-     * @param array $conditions
+     * @param int $userId
      *
      * @return int
      */
     public function countUserTeachingCourseSets($userId, array $conditions);
 
     /**
-     * @param int   $userId
-     * @param array $conditions
-     * @param int   $start
-     * @param int   $limit
+     * @param int $userId
+     * @param int $start
+     * @param int $limit
      *
      * @return array[]
      */
@@ -94,25 +61,27 @@ interface CourseSetService
     public function findCourseSetsByCourseIds(array $courseIds);
 
     /**
-     * @param array $ids
-     *
      * @return array[]
      */
     public function findCourseSetsByIds(array $ids);
 
     /**
-     * @param array        $conditions
+     * @return mixed
+     */
+    public function findCourseSetsByIdsWithMarketingInfo(array $ids);
+
+    /**
      * @param array|string $orderBys
      * @param int          $start
      * @param int          $limit
+     * @param array        $columns
+     * @param bool         $withMarketingInfo
      *
      * @return array[]
      */
-    public function searchCourseSets(array $conditions, $orderBys, $start, $limit);
+    public function searchCourseSets(array $conditions, $orderBys, $start, $limit, $columns = [], $withMarketingInfo = false);
 
     /**
-     * @param array $conditions
-     *
      * @return int
      */
     public function countCourseSets(array $conditions);
@@ -124,8 +93,17 @@ interface CourseSetService
      *
      * @return mixed
      * @Log(module="course",action="create")
+     * 对外开放唯一完整创建courseSet接口
      */
     public function createCourseSet($courseSet);
+
+    /**
+     * @param $courseSet
+     *
+     * @return mixed
+     *               仅包含courseSet表的创建，不包含初始化其他信息，开放给数据同步使用
+     */
+    public function addCourseSet($courseSet);
 
     /**
      * 复制课程到班级.
@@ -192,37 +170,9 @@ interface CourseSetService
     public function findLearnCourseSetsByUserId($userId);
 
     /**
-     * @param array $ids
-     *
      * @return array[]
      */
     public function findPublicCourseSetsByIds(array $ids);
-
-    /**
-     * @param int $userId
-     *
-     * @return int
-     */
-    public function countUserFavorites($userId);
-
-    /**
-     * @param int $userId
-     * @param int $start
-     * @param int $limit
-     *
-     * @return array[]
-     */
-    public function searchUserFavorites($userId, $start, $limit);
-
-    /**
-     * @param array $conditions
-     * @param array $orderBys
-     * @param int   $start
-     * @param int   $limit
-     *
-     * @return array[]
-     */
-    public function searchFavorites(array $conditions, array $orderBys, $start, $limit);
 
     /**
      * 更新课程统计属性.
@@ -230,7 +180,6 @@ interface CourseSetService
      * 如: 学员数、笔记数、评价数量
      *
      * @param  $id
-     * @param array $fields
      *
      * @return mixed
      */
@@ -251,6 +200,8 @@ interface CourseSetService
      * @Log(module="course",action="close",funcName="getCourseSet")
      */
     public function closeCourseSet($id);
+
+    public function findProductIdAndGoodsIdsByIds($ids);
 
     public function findCourseSetsByParentIdAndLocked($parentId, $locked);
 
@@ -305,6 +256,15 @@ interface CourseSetService
      */
     public function updateCourseSetDefaultCourseId($courseSetId);
 
+    /**
+     * @param $courseSetId
+     * @param $courseId
+     *
+     * @return mixed
+     *               手动策略更新defaultCourseId,默认使用updateCourseSetDefaultCourseId，特殊业务才使用本方法
+     */
+    public function updateDefaultCourseId($courseSetId, $courseId);
+
     public function unlockCourseSet($id, $shouldClose = false);
 
     public function updateMaxRate($id, $maxRate);
@@ -323,4 +283,18 @@ interface CourseSetService
     public function cloneCourseSet($courseSetId, $params);
 
     public function refreshHotSeq();
+
+    public function searchCourseSetsByTeacherOrderByStickTime($conditions, $orderBy, $userId, $start, $limit);
+
+    public function findCourseSetsLikeTitle($title);
+
+    public function findCourseSetsByCategoryIdAndCreator($categoryId, $creator);
+
+    /**
+     * @param $courseId
+     * 课程从班级移除后，重置课程及教学计划的parentId
+     */
+    public function resetParentIdByCourseId($courseId);
+
+    public function updateCourseSetRatingNum($id, $fields);
 }

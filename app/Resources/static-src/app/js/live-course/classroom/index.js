@@ -2,11 +2,11 @@ let intervalId = 0;
 let tryCount = 1;
 
 function getRoomUrl() {
-  if (tryCount > 10) {
+  if (tryCount > 3) {
     clearInterval(intervalId);
 
     let html = Translator.trans('classroom.live_room.entry_error_hint');
-    
+
     $('#classroom-url').html(html);
     return;
   }
@@ -17,7 +17,7 @@ function getRoomUrl() {
         clearInterval(intervalId);
 
         let html = data.error+Translator.trans('，')+Translator.trans('classroom.live_room.retry_or_close');
-        
+
         $('#classroom-url').html(html);
         return;
       }
@@ -27,20 +27,20 @@ function getRoomUrl() {
         if (data.param) {
           url = url+'?param='+data.param;
         }
-        let html = '<iframe name="classroom" src="'+url+'" style="position:absolute; left:0; top:0; height:100%; width:100%; border:0px;" scrolling="no"></iframe>';
+        let html = '<iframe name="classroom" src="'+url+'" style="position:absolute; left:0; top:0; height:100%; width:100%; border:0px;" scrolling="no" allowfullscreen="true" allow="screen-wake-lock; display-capture"></iframe>';
 
         $('body').html(html);
 
         clearInterval(intervalId);
       }
-
-      tryCount ++;
     },
     error: function() {
       //var html = "进入直播教室错误，请联系管理员，<a href='javascript:document.location.reload()'>重试</a>或<a href='javascript:window.close();'>关闭</a>"
       //$("#classroom-url").html(html);
     }
   });
+
+  tryCount ++;
 }
 
 getRoomUrl();

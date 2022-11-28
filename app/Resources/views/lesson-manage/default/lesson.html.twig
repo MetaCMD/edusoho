@@ -7,13 +7,19 @@
 {% set isHideUnpublish = course['isHideUnpublish']|default(false) %}
 
 {% set isShowText = lesson.isOptional or (isHideUnpublish and lesson.status != 'published') %}
+{% set multiClass = data('MultiClass',{'courseId':course.id}) %}
 
-<li id="chapter-{{ lesson.id }}" class="task-manage-item task-manage-{{lesson.type}} js-task-manage-item drag clearfix "
+<li id="chapter-{{ lesson.id }}" class="task-manage-item task-manage-{{lesson.type}} js-task-manage-item drag {% if multiClass|default(null) and task.activity.mediaType == 'live' %}drag_cancel{% endif %} clearfix "
     show-num="{% if isShowText %}0{% else %}1{% endif %}">
-
   <div class="item-default-header clearfix">
     <div class="item-line"></div>
     <div class="item-content text-overflow js-item-content">
+      <label 
+        class="cd-checkbox chapter-operation js-chapter-operation hidden" 
+        data-id="{{lesson.id}}"
+        data-type="{{lesson.type}}">
+        <input type="checkbox" value="1" data-toggle="cd-checkbox">
+      </label>
       <span class="lesson-unpublish-status js-lesson-unpublish-status
         {% if lesson.status == 'published' %}
           hidden
@@ -46,22 +52,34 @@
       {{lesson.title|sub_text(30)}}
 
       {% if task.activity.mediaType is same as('live') %}
-        {% if not task.activity.ext.roomCreated|default(true) %}
-          <span class="color-warning">{{ 'course.plan_task.edit_tips'|trans }}</span>
-        {% elseif task.activity.endTime < date().timestamp %}
-          <span class="color-gray cd-ml8">{{ 'course.plan_task.live_finish_tips'|trans }}</span>
+        {% set isFinished = is_live_finished(task.activity.id, 'course') %}
+        {% if isFinished %}
+          {% if task.activity.ext.replayStatus|default('') == 'ungenerated' %}
+            {% if "now"|date("U") >= task.activity.endTime+3*3600 %}
+              <span class="cd-text-danger cd-ml8">({{'course.replay_manage.generated_fail'|trans}})</span>
+            {% else %}
+              <span class="text-warning cd-ml8">({{'course.replay_manage.ungenerated'|trans}})</span>
+            {% endif %}
+          {% elseif task.activity.ext.replayStatus|default('') in ['generated', 'videoGenerated'] %}
+            <span class="text-warning cd-ml8">({{'course.replay_manage.generated'|trans}})</span>
+          {% endif %}
         {% else %}
-          <span class="color-success mls">
-          {{ task.activity.startTime|date('Y-n-j H:i')|trans }} ~ {{ task.activity.endTime|date('H:i')|trans }}</span>
+          {% if not task.activity.ext.roomCreated|default(true) %}
+            <span class="color-warning">{{ 'course.plan_task.edit_tips'|trans }}</span>
+          {% else %}
+            <span class="color-success mls">
+            {{ task.activity.startTime|date('Y-n-j H:i')|trans }} ~ {{ task.activity.endTime|date('H:i')|trans }}</span>
+          {% endif %}
         {% endif %}
       {% else %}
-        {% if task.activity.length|activity_length_format(task.activity.mediaType) %}<span class="mls">
-          （{{ task.activity.length|activity_length_format(task.activity.mediaType) }}）</span>{% endif %}
+        {% if task.activity.length|activity_length_format(task.activity.mediaType) %}
+          <span class="mls">（{{ task.activity.length|activity_length_format(task.activity.mediaType) }}）</span>
+        {% endif %}
       {% endif %}
     </div>
 
     <div class="item-actions">
-      <a class="cd-mr24" data-role='update-task' href="javascript:;"
+      <a class="cd-mr24 {% if course.platform == 'supplier' %}hidden{% endif %}" data-role='update-task' href="javascript:;"
         data-toggle="modal" data-target="#modal" data-url="{{ path('course_manage_task_update', {id:task.id, courseId:task.courseId}) }}">
         <i class="es-icon es-icon-edit" data-toggle="tooltip" title="{{ 'course.plan_task.activity_manage.modify'|trans({'%taskName%':setting('course.task_name')|default('admin.setting_course.task'|trans)}) }}" data-placement="top"></i>
       </a>

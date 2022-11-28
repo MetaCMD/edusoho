@@ -20,6 +20,8 @@ parameters:
         topxia.upload.private_directory: "%topxia.upload.private_directory%"
         plugin.config_file: "%kernel.root_dir%/config/plugin_installed.php"
         service_proxy_enabled: "%service_proxy_enabled%"
+        run_dir: "%kernel.root_dir%/run"
+        cache_dir: "%kernel.cache_dir%"
 
     biz_db_options:
         dbname: "%database_name%"
@@ -36,3 +38,4 @@ services:
     biz:
         class: Codeages\Biz\Framework\Context\Biz
         arguments: ["%biz_config%"]
+        public: true

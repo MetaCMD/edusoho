@@ -2,9 +2,9 @@
 
 namespace Biz\Classroom\Dao\Impl;
 
+use AppBundle\Common\TimeMachine;
 use Biz\Classroom\Dao\ClassroomDao;
 use Codeages\Biz\Framework\Dao\AdvancedDaoImpl;
-use AppBundle\Common\TimeMachine;
 
 class ClassroomDaoImpl extends AdvancedDaoImpl implements ClassroomDao
 {
@@ -14,10 +14,24 @@ class ClassroomDaoImpl extends AdvancedDaoImpl implements ClassroomDao
     {
         $sql = "SELECT * FROM {$this->table} where title=? LIMIT 1";
 
-        return $this->db()->fetchAssoc($sql, array($title));
+        return $this->db()->fetchAssoc($sql, [$title]);
     }
 
-    public function search($conditions, $orderBy, $start, $limit, $columns = array())
+    public function findProductIdAndGoodsIdsByIds($ids)
+    {
+        if (empty($ids)) {
+            return [];
+        }
+        $marks = str_repeat('?,', count($ids) - 1).'?';
+        $sql = "SELECT c.id AS classroomId, p.id as productId, g.id as goodsId FROM {$this->table} c 
+                LEFT JOIN `product` p ON c.id=p.targetId AND p.targetType = 'classroom'
+                LEFT JOIN `goods` g ON g.productId = p.id 
+                WHERE c.id IN ({$marks});";
+
+        return $this->db()->fetchAll($sql, $ids);
+    }
+
+    public function search($conditions, $orderBy, $start, $limit, $columns = [])
     {
         if (array_key_exists('studentNum', $orderBy) && array_key_exists('lastDays', $conditions) && $conditions['lastDays'] > 0) {
             $timeRange = TimeMachine::getTimeRangeByDays($conditions['lastDays']);
@@ -31,27 +45,11 @@ class ClassroomDaoImpl extends AdvancedDaoImpl implements ClassroomDao
             return $this->searchByRatingAndTimeRange($conditions, $timeRange, $orderBy['rating'], $start, $limit);
         }
 
-        return parent::search($conditions, $orderBy, $start, $limit, $columns = array());
+        return parent::search($conditions, $orderBy, $start, $limit, $columns);
     }
 
     /**
      *  根据一段时间内的加入人数排序
-     *
-        SELECT classroom_member.studentNumCount, classroom.*
-        FROM (classroom classroom)
-            LEFT JOIN (
-                SELECT COUNT(id) AS studentNumCount, classroomId
-                FROM `classroom_member`
-                WHERE `role` LIKE '%|student|%'
-                    AND createdTime >= 1533312000
-                    AND createdTime <= 1542211200
-                GROUP BY classroomId
-            ) classroom_member
-            ON classroom.id = classroom_member.classroomId
-        WHERE classroom.status = :status
-            AND classroom.showable = :showable
-        ORDER BY classroom_member.studentNumCount DESC
-        LIMIT 0, 15
      */
     protected function searchByStudentNumAndTimeRange($conditions, $timeRange, $orderBy = 'DESC', $start, $limit)
     {
@@ -76,7 +74,7 @@ class ClassroomDaoImpl extends AdvancedDaoImpl implements ClassroomDao
             ->setFirstResult($start)
             ->setMaxResults($limit);
 
-        $classrooms = $builder->execute()->fetchAll() ?: array();
+        $classrooms = $builder->execute()->fetchAll() ?: [];
         foreach ($classrooms as &$classroom) {
             $classroom['studentNum'] = empty($classroom['studentNumCount']) ? 0 : $classroom['studentNumCount'];
         }
@@ -86,22 +84,6 @@ class ClassroomDaoImpl extends AdvancedDaoImpl implements ClassroomDao
 
     /**
      * 根据一段时间内的评价平均分排序
-     *
-        SELECT classroom_review.rating_avg, classroom.*
-        FROM (classroom classroom)
-            LEFT JOIN (
-                SELECT AVG(`rating`) AS rating_avg, classroomId
-                FROM `classroom_review`
-                WHERE parentId = 0
-                    AND createdTime >= 1533312000
-                    AND createdTime <= 1542211200
-                GROUP BY classroomId
-            ) classroom_review
-            ON classroom.id = classroom_review.classroomId
-        WHERE classroom.status = :status
-            AND classroom.showable = :showable
-        ORDER BY classroom_review.rating_avg DESC
-        LIMIT 0, 15
      */
     protected function searchByRatingAndTimeRange($conditions, $timeRange, $orderBy = 'DESC', $start, $limit)
     {
@@ -126,7 +108,7 @@ class ClassroomDaoImpl extends AdvancedDaoImpl implements ClassroomDao
             ->setFirstResult($start)
             ->setMaxResults($limit);
 
-        $classrooms = $builder->execute()->fetchAll() ?: array();
+        $classrooms = $builder->execute()->fetchAll() ?: [];
         foreach ($classrooms as &$classroom) {
             $classroom['rating'] = empty($classroom['rating_avg']) ? 0 : $classroom['rating_avg'];
         }
@@ -137,12 +119,12 @@ class ClassroomDaoImpl extends AdvancedDaoImpl implements ClassroomDao
     public function findByLikeTitle($title)
     {
         if (empty($title)) {
-            return array();
+            return [];
         }
 
         $sql = "SELECT * FROM {$this->table} WHERE `title` LIKE ?; ";
 
-        return $this->db()->fetchAll($sql, array('%'.$title.'%'));
+        return $this->db()->fetchAll($sql, ['%'.$title.'%']);
     }
 
     public function findByIds($ids)
@@ -174,11 +156,11 @@ class ClassroomDaoImpl extends AdvancedDaoImpl implements ClassroomDao
 
     public function declares()
     {
-        return array(
-            'timestamps' => array('createdTime', 'updatedTime'),
-            'serializes' => array('assistantIds' => 'json', 'teacherIds' => 'json', 'service' => 'json'),
-            'orderbys' => array('rating', 'name', 'createdTime', 'recommendedSeq', 'studentNum', 'id', 'updatedTime', 'recommendedTime', 'hitNum', 'hotSeq', 'price'),
-            'conditions' => array(
+        return [
+            'timestamps' => ['createdTime', 'updatedTime'],
+            'serializes' => ['assistantIds' => 'json', 'teacherIds' => 'json', 'service' => 'json'],
+            'orderbys' => ['rating', 'name', 'createdTime', 'recommendedSeq', 'studentNum', 'id', 'updatedTime', 'recommendedTime', 'hitNum', 'hotSeq', 'price'],
+            'conditions' => [
                 'title = :title',
                 'status = :status',
                 'title like :titleLike',
@@ -189,17 +171,20 @@ class ClassroomDaoImpl extends AdvancedDaoImpl implements ClassroomDao
                 'categoryId IN (:categoryIds)',
                 'categoryId =:categoryId',
                 'id IN (:classroomIds)',
+                'id in (:ids)',
                 'recommended = :recommended',
                 'showable = :showable',
                 'buyable = :buyable',
-                'vipLevelId >= :vipLevelIdGreaterThan',
-                'vipLevelId = :vipLevelId',
-                'vipLevelId IN ( :vipLevelIds )',
                 'orgCode = :orgCode',
                 'orgCode PRE_LIKE :likeOrgCode',
                 'headTeacherId = :headTeacherId',
                 'updatedTime >= :updatedTime_GE',
-            ),
-        );
+                'id NOT IN (:excludeIds)',
+                'ids NOT IN (:excludeIds)',
+                'creator = :creator',
+                'creator IN (:creators)',
+                'creator = :userId',
+            ],
+        ];
     }
 }

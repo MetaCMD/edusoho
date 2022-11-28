@@ -10,7 +10,6 @@ use Biz\Activity\Dao\ActivityDao;
 use Biz\Task\Service\TaskService;
 use Codeages\Biz\Framework\Event\Event;
 use Biz\Course\Event\CourseSyncSubscriber;
-use Biz\Course\Copy\Chain\ActivityTestpaperCopy;
 use Codeages\Biz\Framework\Scheduler\Service\SchedulerService;
 
 class TaskSyncSubscriber extends CourseSyncSubscriber
@@ -76,6 +75,8 @@ class TaskSyncSubscriber extends CourseSyncSubscriber
     {
         $task = $event->getSubject();
         $this->syncTaskStatus($task, true);
+
+        $this->dispatchEvent('course.task.publish.sync', new Event($task));
     }
 
     public function onCourseTaskUnpublish(Event $event)
@@ -129,21 +130,6 @@ class TaskSyncSubscriber extends CourseSyncSubscriber
         ));
     }
 
-    protected function syncTestpaper($activity, $copiedCourse)
-    {
-        if ('testpaper' != $activity['mediaType']) {
-            return array();
-        }
-
-        $testpaperCopy = new ActivityTestpaperCopy($this->getBiz());
-
-        return $testpaperCopy->copy($activity, array(
-            'newCourseSetId' => $copiedCourse['courseSetId'],
-            'newCourseId' => $copiedCourse['id'],
-            'isCopy' => 1,
-        ));
-    }
-
     /**
      * @return TaskService
      */
@@ -186,5 +172,18 @@ class TaskSyncSubscriber extends CourseSyncSubscriber
     private function getSchedulerService()
     {
         return $this->getBiz()->service('Scheduler:SchedulerService');
+    }
+
+    protected function dispatchEvent($eventName, $subject, $arguments = array())
+    {
+        if ($subject instanceof Event) {
+            $event = $subject;
+        } else {
+            $event = new Event($subject, $arguments);
+        }
+
+        $biz = $this->getBiz();
+
+        return $biz['dispatcher']->dispatch($eventName, $event);
     }
 }

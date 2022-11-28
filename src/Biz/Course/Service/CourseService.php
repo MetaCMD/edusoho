@@ -2,8 +2,8 @@
 
 namespace Biz\Course\Service;
 
-use Biz\User\UserException;
 use Biz\System\Annotation\Log;
+use Biz\User\UserException;
 
 interface CourseService
 {
@@ -13,9 +13,11 @@ interface CourseService
     const FREE_LEARN_MODE = 'freeMode';
     const LOCK_LEARN_MODE = 'lockMode';
 
+    const MAX_EXPIRY_DAY = 7300;
+
     public function getCourse($id);
 
-    public function hasCourseManagerRole($courseId = 0);
+    public function hasCourseManagerRole($courseId = 0, $action = '');
 
     public function findCoursesByIds($ids);
 
@@ -26,6 +28,8 @@ interface CourseService
     public function findPublishedCoursesByCourseSetId($courseSetId);
 
     public function findCoursesByCourseSetId($courseSetId);
+
+    public function findCoursesByCategoryIds($categoryIds);
 
     public function getDefaultCourseByCourseSetId($courseSetId);
 
@@ -138,13 +142,15 @@ interface CourseService
      */
     public function findCourseItems($courseId, $limitNum = 0);
 
+    public function searchMultiClassCourseItems($conditions, $sort, $start, $limit);
+
     /**
      * @param $courseId
      * @param array $paging array('direction' => 'up or down', 'offsetSeq' => '0', 'limit' => 10)
      *
      * @return mixed
      */
-    public function findCourseItemsByPaging($courseId, $paging = array());
+    public function findCourseItemsByPaging($courseId, $paging = []);
 
     public function tryManageCourse($courseId, $courseSetId = 0);
 
@@ -161,6 +167,8 @@ interface CourseService
     public function findStudentsByCourseId($courseId);
 
     public function findTeachersByCourseId($courseId);
+
+    public function findTeachersByCourseIds($courseIds);
 
     public function countStudentsByCourseId($courseId);
 
@@ -204,13 +212,11 @@ interface CourseService
     public function countUserLearnCourses($userId);
 
     /**
-     * @param array $ids
-     *
      * @return array[]
      */
     public function findPublicCoursesByIds(array $ids);
 
-    public function countUserLearningCourses($userId, $filters = array());
+    public function countUserLearningCourses($userId, $filters = []);
 
     /**
      * filter 支持 type classroomId locked ...
@@ -222,17 +228,21 @@ interface CourseService
      *
      * @return mixed
      */
-    public function findUserLearningCourses($userId, $start, $limit, $filters = array());
+    public function findUserLearningCourses($userId, $start, $limit, $filters = []);
 
-    public function countUserLearnedCourses($userId, $filters = array());
+    public function countUserLearnedCourses($userId, $filters = []);
 
-    public function findUserLearnedCourses($userId, $start, $limit, $filters = array());
+    public function findUserLearnedCourses($userId, $start, $limit, $filters = []);
 
     public function findLearnedCoursesByCourseIdAndUserId($courseId, $userId);
 
-    public function searchCourses($conditions, $sort, $start, $limit, $columns = array());
+    public function searchCourses($conditions, $sort, $start, $limit, $columns = []);
 
-    public function searchWithJoinCourseSet($conditions, $sort, $start, $limit, $columns = array());
+    public function appendSpecsInfo($courses);
+
+    public function appendSpecInfo($course);
+
+    public function searchWithJoinCourseSet($conditions, $sort, $start, $limit, $columns = []);
 
     public function searchBySort($conditions, $sort, $start, $limit);
 
@@ -262,13 +272,13 @@ interface CourseService
 
     public function cancelRecommendCourseByCourseSetId($courseSetId);
 
-    public function findUserLearningCourseCountNotInClassroom($userId, $filters = array());
+    public function findUserLearningCourseCountNotInClassroom($userId, $filters = []);
 
-    public function findUserLearningCoursesNotInClassroom($userId, $start, $limit, $filters = array());
+    public function findUserLearningCoursesNotInClassroom($userId, $start, $limit, $filters = []);
 
-    public function findUserLeanedCourseCount($userId, $filters = array());
+    public function findUserLeanedCourseCount($userId, $filters = []);
 
-    public function findUserLearnedCoursesNotInClassroom($userId, $start, $limit, $filters = array());
+    public function findUserLearnedCoursesNotInClassroom($userId, $start, $limit, $filters = []);
 
     public function findUserLearnCourseCountNotInClassroom($userId, $onlyPublished = true, $filterReservation = false);
 
@@ -295,8 +305,6 @@ interface CourseService
     public function findUserManageCoursesByCourseSetId($userId, $courseSetId);
 
     public function unlockCourse($courseId);
-
-    public function getFavoritedCourseByUserIdAndCourseSetId($userId, $courseSetId);
 
     public function buildCourseExpiryDataFromClassroom($expiryMode, $expiryValue);
 
@@ -353,4 +361,14 @@ interface CourseService
      * 课程老师，后台设置可修改营销设置可修改
      */
     public function canUpdateCourseBaseInfo($courseId, $courseSetId = 0);
+
+    public function appendHasCertificate(array $courses);
+
+    public function hasCertificate($courseId);
+
+    public function sumTotalIncomeByIds($ids);
+
+    public function findCourseByCourseSetTitleLike($courseSetTitle);
+
+    public function courseItemIdsHandle($courseId, $ids);
 }

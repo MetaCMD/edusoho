@@ -128,6 +128,11 @@ class SchedulerServiceImpl extends BaseService implements SchedulerService
         return $this->getJobFiredDao()->deleteUnacquiredBeforeCreatedTime($startTime);
     }
 
+    /**
+     * @param $jobId
+     * @return mixed
+     * 由于mysql8以下，重启mysql会重置自增ID，JobId会被重置，所以如果是判断任务进行中的判断不应该用jobId，而应该用jobName，jobName添加唯一标识
+     */
     public function findJobFiredsByJobId($jobId)
     {
         return $this->getJobFiredDao()->findByJobId($jobId);
@@ -136,6 +141,16 @@ class SchedulerServiceImpl extends BaseService implements SchedulerService
     public function findExecutingJobFiredByJobId($jobId)
     {
         return $this->getJobFiredDao()->findByJobIdAndStatus($jobId, static::EXECUTING);
+    }
+
+    /**
+     * @param $jobName
+     * @return mixed
+     * 由于mysql8以下，重启mysql会重置自增ID，jobId会被重置，所以如果是判断任务进行中的判断不应该用jobId，而应该用jobName，jobName添加唯一标识
+     */
+    public function findJobFiredByJobName($jobName)
+    {
+        return $this->getJobFiredDao()->findByJobName($jobName);
     }
 
     public function deleteJob($id)
@@ -152,6 +167,11 @@ class SchedulerServiceImpl extends BaseService implements SchedulerService
         if (!empty($job)) {
             $this->deleteJob($job['id']);
         }
+    }
+
+    public function getJob($id)
+    {
+        return $this->getJobDao()->get($id);
     }
 
     public function getJobByName($name)
@@ -252,7 +272,10 @@ class SchedulerServiceImpl extends BaseService implements SchedulerService
         $lock = new Lock($this->biz);
         $lockName = 'scheduler.job.trigger';
         try {
-            $lock->get($lockName, 20);
+            $result = $lock->get($lockName, 20);
+            if (!$result) {
+                return;
+            }
             $this->biz['db']->beginTransaction();
 
             $jobFired = $this->getAcquiredJob();

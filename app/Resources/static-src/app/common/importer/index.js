@@ -18,6 +18,7 @@ class Importer {
       rules: {},
       importData: [],
       formData: {},
+      messages: {},
     }, props);
 
     this.$container = $(this.container);
@@ -26,7 +27,7 @@ class Importer {
 
     this.init();
   }
-  
+
   init() {
     this.events();
   }
@@ -50,13 +51,14 @@ class Importer {
     let self = this;
     let validatior = this.$form.validate({
       rules: self.rules,
+      messages: self.messages,
       submitHandler(form) {
         let $form = $(form);
         let $btn = $(self.verifyBtn);
         $btn.button('loading');
 
         self.formData = arrayToJson($form.serializeArray());
-        
+
         $.ajax({
           type: 'POST',
           url: $form.attr('action'),
@@ -68,7 +70,7 @@ class Importer {
           $btn.button('reset');
           const status = res.status;
           const eventType = 'on' + status.charAt(0).toUpperCase() + status.substr(1);
-  
+
           console.log(eventType);
           self[eventType](res);
         }).fail((res) => {
@@ -107,9 +109,12 @@ class Importer {
     `;
 
     const errors = [];
+
     res.errorInfo.map((item) => {
-      errors.push({
-        error: item
+      item.split('<br>').map((error) => {
+        errors.push({
+          error: error
+        });
       });
     });
 
@@ -136,6 +141,7 @@ class Importer {
     `;
 
     this.importData = res.importData;
+    this.chunkNum = res.chunkNum ? res.chunkNum : 8;
     this.addTemplate(source, res);
   }
 
@@ -156,7 +162,8 @@ class Importer {
     new Progress({
       importData: this.importData,
       $container: this.$container,
-      formData: this.formData
+      formData: this.formData,
+      chunkSize: this.chunkNum
     });
   }
 }

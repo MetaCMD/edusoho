@@ -2,20 +2,27 @@
 
 namespace Biz\Activity\Service\Impl;
 
-use Biz\Activity\Config\Activity;
-use Biz\BaseService;
-use Biz\Activity\Dao\ActivityDao;
 use AppBundle\Common\ArrayToolkit;
+use Biz\Activity\Dao\ActivityDao;
+use Biz\Activity\Listener\ActivityLearnLogListener;
+use Biz\Activity\Service\ActivityLearnLogService;
+use Biz\Activity\Service\ActivityService;
+use Biz\Activity\Service\ExerciseActivityService;
+use Biz\Activity\Service\HomeworkActivityService;
+use Biz\Activity\Service\LiveActivityService;
+use Biz\Activity\Service\TestpaperActivityService;
+use Biz\BaseService;
 use Biz\Common\CommonException;
 use Biz\Course\Service\CourseService;
-use Biz\Course\Service\MaterialService;
-use Biz\File\Service\UploadFileService;
-use Codeages\Biz\Framework\Event\Event;
 use Biz\Course\Service\CourseSetService;
-use Biz\Activity\Service\ActivityService;
-use Biz\Activity\Service\ActivityLearnLogService;
-use Biz\Activity\Listener\ActivityLearnLogListener;
+use Biz\Course\Service\MaterialService;
+use Biz\Course\Service\MemberService;
+use Biz\File\Service\UploadFileService;
+use Biz\System\Service\SettingService;
+use Biz\User\Service\UserService;
 use Biz\Util\EdusohoLiveClient;
+use Codeages\Biz\Framework\Event\Event;
+use Codeages\Biz\ItemBank\Answer\Service\AnswerRecordService;
 
 class ActivityServiceImpl extends BaseService implements ActivityService
 {
@@ -33,6 +40,39 @@ class ActivityServiceImpl extends BaseService implements ActivityService
         return $activity;
     }
 
+    public function getActivityFinishCondition($activity)
+    {
+        if (ArrayToolkit::requireds($activity, ['mediaType', 'finishType', 'finishData'])) {
+            $this->createInvalidArgumentException('params missed');
+        }
+
+        $type = $activity['mediaType'];
+        $finishType = $activity['finishType'];
+        $finishData = $activity['finishData'];
+
+        if ('testpapaer' == $type && 'score' == $finishType) {
+            if (!isset($activity['ext'])) {
+                $activity = $this->fetchMedia($activity);
+            }
+            $finishData = $activity['ext']['finishCondition']['finishScore'];
+        }
+
+        $text = "mobile.task.finish_tips.{$type}.{$finishType}";
+
+        try {
+            $text = $this->trans($text, ['%finishData%' => $finishData]);
+        } catch (\Exception $e) {
+            // 如果新增类型，而翻译文件未配置，会报错
+            $text = '';
+        }
+
+        return [
+            'type' => $finishType,
+            'data' => $finishData,
+            'text' => $text,
+        ];
+    }
+
     public function getActivityByCopyIdAndCourseSetId($copyId, $courseSetId)
     {
         return $this->getActivityDao()->getByCopyIdAndCourseSetId($copyId, $courseSetId);
@@ -47,29 +87,54 @@ class ActivityServiceImpl extends BaseService implements ActivityService
 
     public function findActivitiesByCourseIdAndType($courseId, $type, $fetchMedia = false)
     {
-        $conditions = array(
-            'fromCourseId' => $courseId,
-            'mediaType' => $type,
-        );
-        $activities = $this->getActivityDao()->search($conditions, null, 0, 1000);
+        $activities = $this->getActivityDao()->findActivitiesByCourseIdAndType($courseId, $type);
 
         return $this->prepareActivities($fetchMedia, $activities);
+    }
+
+    public function findActivitiesByCourseIdsAndType($courseIds, $type, $fetchMedia = false)
+    {
+        $activities = $this->getActivityDao()->findActivitiesByCourseIdsAndType($courseIds, $type);
+
+        return $this->prepareActivities($fetchMedia, $activities);
+    }
+
+    public function findActivitiesByCourseIdsAndTypes($courseIds, $types, $fetchMedia = false)
+    {
+        $activities = $this->getActivityDao()->findActivitiesByCourseIdsAndTypes($courseIds, $types);
+
+        return $this->prepareActivities($fetchMedia, $activities);
+    }
+
+    public function findActivitiesByCourseSetId($courseSetId)
+    {
+        return $this->getActivityDao()->findActivitiesByCourseSetId($courseSetId);
     }
 
     public function findActivitiesByCourseSetIdAndType($courseSetId, $type, $fetchMedia = false)
     {
-        $conditions = array(
-            'fromCourseSetId' => $courseSetId,
-            'mediaType' => $type,
-        );
-        $activities = $this->getActivityDao()->search($conditions, null, 0, 1000);
+        $activities = $this->getActivityDao()->findActivitiesByCourseSetIdAndType($courseSetId, $type);
 
         return $this->prepareActivities($fetchMedia, $activities);
     }
 
-    public function search($conditions, $orderBy, $start, $limit)
+    public function findActivitiesByCourseSetIdsAndType($courseSetIds, $type, $fetchMedia = false)
     {
-        return $this->getActivityDao()->search($conditions, $orderBy, $start, $limit);
+        $activities = $this->getActivityDao()->findActivitiesByCourseSetIdsAndType($courseSetIds, $type);
+
+        return $this->prepareActivities($fetchMedia, $activities);
+    }
+
+    public function findActivitiesByCourseSetIdsAndTypes($courseSetIds, $types, $fetchMedia = false)
+    {
+        $activities = $this->getActivityDao()->findActivitiesByCourseSetIdsAndTypes($courseSetIds, $types);
+
+        return $this->prepareActivities($fetchMedia, $activities);
+    }
+
+    public function search($conditions, $orderBy, $start, $limit, $columns = [])
+    {
+        return $this->getActivityDao()->search($conditions, $orderBy, $start, $limit, $columns);
     }
 
     public function count($conditions)
@@ -77,7 +142,7 @@ class ActivityServiceImpl extends BaseService implements ActivityService
         return $this->getActivityDao()->count($conditions);
     }
 
-    public function trigger($id, $eventName, $data = array())
+    public function trigger($id, $eventName, $data = [])
     {
         $activity = $this->getActivity($id);
 
@@ -97,7 +162,7 @@ class ActivityServiceImpl extends BaseService implements ActivityService
         $this->triggerActivityLearnLogListener($activity, $eventName, $data);
 
         if (empty($data['events'])) {
-            $events = array();
+            $events = [];
         } else {
             $events = $data['events'];
             unset($data['events']);
@@ -160,6 +225,11 @@ class ActivityServiceImpl extends BaseService implements ActivityService
             $fields['mediaId'] = $media['id'];
         }
 
+        // 使用content来存储media内容
+        if (!empty($fields['media']) && empty($fields['content'])) {
+            $fields['content'] = json_encode($fields['media']);
+        }
+
         $materials = $this->getMaterialsFromActivity($fields);
 
         $fields['fromUserId'] = $this->getCurrentUser()->getId();
@@ -174,7 +244,7 @@ class ActivityServiceImpl extends BaseService implements ActivityService
 
         $listener = $activityConfig->getListener('activity.created');
         if (!empty($listener)) {
-            $listener->handle($activity, array());
+            $listener->handle($activity, []);
         }
 
         return $activity;
@@ -215,7 +285,7 @@ class ActivityServiceImpl extends BaseService implements ActivityService
 
             $this->getCourseService()->tryManageCourse($activity['fromCourseId']);
 
-            $this->syncActivityMaterials($activity, array(), 'delete');
+            $this->syncActivityMaterials($activity, [], 'delete');
 
             $activityConfig = $this->getActivityConfig($activity['mediaType']);
             $activityConfig->delete($activity['mediaId']);
@@ -238,6 +308,144 @@ class ActivityServiceImpl extends BaseService implements ActivityService
         return $activityConfig->isFinished($id);
     }
 
+    public function getByMediaIdAndMediaTypeAndCopyId($mediaId, $mediaType, $copyId)
+    {
+        return $this->getActivityDao()->getByMediaIdAndMediaTypeAndCopyId($mediaId, $mediaType, $copyId);
+    }
+
+    public function getByMediaIdAndMediaType($mediaId, $mediaType)
+    {
+        return $this->getActivityDao()->getByMediaIdAndMediaType($mediaId, $mediaType);
+    }
+
+    public function getByMediaIdAndMediaTypeAndCourseId($mediaId, $mediaType, $courseId)
+    {
+        return $this->getActivityDao()->getByMediaIdAndMediaTypeAndCourseId($mediaId, $mediaType, $courseId);
+    }
+
+    /**
+     * @param $conditions
+     *
+     * @return array
+     *               处理 直播回放的activityId 管理员和讲师
+     */
+    public function findManageReplayActivityIds($conditions)
+    {
+        $activityIds = $this->processManageReplayConditionsActivityIds();
+        $activityIds = $this->processFindManageReplayConditions_withCourseTab($activityIds, $conditions);
+        $activityIds = $this->processFindManageReplayConditions_withLiveActivityTab($activityIds, $conditions);
+
+        if (!empty($conditions['keyword']) && 'activityTitle' == $conditions['keywordType']) {
+            $activityConditions['title'] = $conditions['keyword'];
+        }
+        if (empty($activityConditions)) {
+            $ids = array_values(array_unique($activityIds));
+
+            return empty($ids) ? [-1] : $ids;
+        }
+        $activityConditions['mediaType'] = 'live';
+        $activities = $this->search($activityConditions, [], 0, PHP_INT_MAX, ['id']);
+        $searchActivityIds = ArrayToolkit::column($activities, 'id');
+        $ids = array_values(array_unique(array_intersect($activityIds, $searchActivityIds)));
+
+        return empty($ids) ? [-1] : $ids;
+    }
+
+    protected function processManageReplayConditionsActivityIds()
+    {
+        $currentUser = $this->getCurrentUser();
+        if ($currentUser->isAdmin()) {
+            $activities = $this->search(['mediaType' => 'live'], [], 0, PHP_INT_MAX, ['id']);
+            $activityIds = ArrayToolkit::column($activities, 'id');
+        } else {
+            $activityIds = $this->findLiveActivityIdsWithoutAdmin();
+        }
+        $publishActivities = $this->getLiveActivityService()->search(['replayPublic' => 1], [], 0, $this->getLiveActivityService()->count(['replayPublic' => 1]), ['id']);
+
+        $liveActivityIds = empty($publishActivities) ? [-1] : ArrayToolkit::column($publishActivities, 'id');
+        $activities = $this->search(['mediaIds' => $liveActivityIds, 'mediaType' => 'live'], [], 0, count($liveActivityIds), ['id']);
+        $ids = ArrayToolkit::column($activities, 'id');
+
+        return array_values(array_unique(array_merge($activityIds, $ids)));
+    }
+
+    protected function processFindManageReplayConditions_withLiveActivityTab($activityIds, $conditions)
+    {
+        if (!empty($conditions['startTime'])) {
+            $startTime = strtotime(date('Y-m-d', $conditions['startTime']));
+            $liveConditions['liveStartTime_GT'] = $startTime;
+        }
+
+        if (!empty($conditions['endTime'])) {
+            $endTime = strtotime(date('Y-m-d', $conditions['endTime']).' 23:59:59');
+            $liveConditions['liveStartTime_LT'] = $endTime;
+        }
+
+        if (!empty($conditions['replayTagId'])) {
+            $liveConditions['replayTagIds'] = "%|{$conditions['replayTagId']}|%";
+        }
+        if (!empty($conditions['replayPublic'])) {
+            $liveConditions['replayPublic'] = $conditions['replayPublic'];
+        }
+        if (!empty($conditions['keyword']) && 'anchor' == $conditions['keywordType']) {
+            $users = $this->getUserService()->findUserLikeNickname($conditions['keyword']);
+            $liveConditions['anchorIds'] = empty($users) ? [-1] : ArrayToolkit::column($users, 'id');
+        }
+
+        if (!empty($conditions['anchorId'])) {
+            $liveConditions['anchorIds'] = empty($liveConditions['anchorIds']) ? [$conditions['anchorId']] : array_merge($liveConditions['anchorIds'], [$conditions['anchorId']]);
+        }
+
+        if (empty($liveConditions)) {
+            return $activityIds;
+        }
+        $liveActivities = $this->getLiveActivityService()->search($liveConditions, [], 0, PHP_INT_MAX, ['id']);
+        $liveActivityIds = empty($liveActivities) ? [-1] : ArrayToolkit::column($liveActivities, 'id');
+        $anchorActivities = $this->search(['mediaIds' => $liveActivityIds, 'mediaType' => 'live'], [], 0, PHP_INT_MAX, ['id']);
+        $activityTagIds = ArrayToolkit::column($anchorActivities, 'id');
+
+        return array_intersect($activityIds, $activityTagIds);
+    }
+
+    protected function processFindManageReplayConditions_withCourseTab($activityIds, $conditions)
+    {
+        $courseIds = [];
+        if (!empty($conditions['categoryId'])) {
+            $courses = $this->getCourseService()->searchCourses(['categoryId' => $conditions['categoryId']], [], 0, PHP_INT_MAX, ['id']);
+            $courseIds = empty($courses) ? [-1] : ArrayToolkit::column($courses, 'id');
+        }
+        if (!empty($conditions['keyword']) && 'courseTitle' == $conditions['keywordType']) {
+            $courses = $this->getCourseService()->searchCourses(['titleLike' => $conditions['keyword'], 'ids' => $courseIds], [], 0, PHP_INT_MAX, ['id']);
+            $likeCourses = $this->getCourseService()->searchCourses(['courseSetTitleLike' => $conditions['keyword'], 'ids' => $courseIds], [], 0, PHP_INT_MAX, ['id']);
+            $courses = array_merge($courses, $likeCourses);
+            $courseIds = empty($courses) ? [-1] : ArrayToolkit::column($courses, 'id');
+        }
+        if (!empty($conditions['courseId'])) {
+            $courseIds = empty($courseIds) ? [$conditions['courseId']] : array_intersect($courseIds, [$conditions['courseId']]);
+        }
+        if (empty($courseIds)) {
+            return $activityIds;
+        }
+        $activityCategory = $this->search(['ids' => $activityIds, 'courseIds' => $courseIds, 'mediaType' => 'live'], [], 0, PHP_INT_MAX, ['id']);
+        $activityCategoryIds = ArrayToolkit::column($activityCategory, 'id');
+
+        return array_intersect($activityIds, $activityCategoryIds);
+    }
+
+    protected function findLiveActivityIdsWithoutAdmin()
+    {
+        $courses = $this->getCourseService()->searchCourses(['teacherIds' => "%|{$this->getCurrentUser()->getId()}|%"], [], 0, PHP_INT_MAX, ['id']);
+        $courseIds = empty($courses) ? [-1] : ArrayToolkit::column($courses, 'id');
+        $teacherActivities = $this->search(['courseIds' => $courseIds, 'mediaType' => 'live'], [], 0, PHP_INT_MAX, ['id']);
+        $liveActivities = $this->getLiveActivityService()->search(['anchorId' => $this->getCurrentUser()->getId(), 'replayStatusNotEqual' => 'ungenerated'], [], 0, PHP_INT_MAX, ['id']);
+        $liveActivityIds = empty($liveActivities) ? [-1] : ArrayToolkit::column($liveActivities, 'id');
+        $anchorActivities = $this->search(['mediaIds' => $liveActivityIds, 'mediaType' => 'live'], [], 0, PHP_INT_MAX, ['id']);
+        $activities = array_merge($teacherActivities, $anchorActivities);
+        $activityIds = ArrayToolkit::column($activities, 'id');
+
+        return array_values(array_unique($activityIds));
+    }
+
     protected function syncActivityMaterials($activity, $materials, $mode = 'create')
     {
         if ('delete' === $mode) {
@@ -258,15 +466,15 @@ class ActivityServiceImpl extends BaseService implements ActivityService
                 break;
             case 'update':
                 $exists = $this->getMaterialService()->searchMaterials(
-                    array(
+                    [
                         'lessonId' => $activity['id'],
                         'type' => 'course',
-                    ),
-                    array('createdTime' => 'DESC'),
+                    ],
+                    ['createdTime' => 'DESC'],
                     0,
                     PHP_INT_MAX
                 );
-                $currents = array();
+                $currents = [];
                 foreach ($materials as $id => $material) {
                     $currents[] = $this->buildMaterial($material, $activity);
                 }
@@ -291,7 +499,7 @@ class ActivityServiceImpl extends BaseService implements ActivityService
 
     protected function buildMaterial($material, $activity)
     {
-        return array(
+        return [
             'fileId' => intval($material['fileId']),
             'courseId' => $activity['fromCourseId'],
             'courseSetId' => $activity['fromCourseSetId'],
@@ -303,12 +511,12 @@ class ActivityServiceImpl extends BaseService implements ActivityService
             'source' => 'download' == $activity['mediaType'] ? 'coursematerial' : 'courseactivity',
             'link' => empty($material['link']) ? '' : $material['link'],
             'copyId' => 0, //$fields
-        );
+        ];
     }
 
     protected function diffMaterials($arr1, $arr2)
     {
-        $diffs = array();
+        $diffs = [];
         if (empty($arr2)) {
             return $arr1;
         }
@@ -334,7 +542,7 @@ class ActivityServiceImpl extends BaseService implements ActivityService
 
     protected function dirtyMaterials($exists, $currents)
     {
-        $diffs = array();
+        $diffs = [];
         if (empty($arr2)) {
             return $diffs;
         }
@@ -361,7 +569,7 @@ class ActivityServiceImpl extends BaseService implements ActivityService
     {
         $fields = ArrayToolkit::parts(
             $fields,
-            array(
+            [
                 'title',
                 'remark',
                 'mediaId',
@@ -376,7 +584,7 @@ class ActivityServiceImpl extends BaseService implements ActivityService
                 'endTime',
                 'finishType',
                 'finishData',
-            )
+            ]
         );
 
         if (!empty($fields['startTime']) && !empty($fields['length']) && 'testpaper' != $fields['mediaType']) {
@@ -394,12 +602,12 @@ class ActivityServiceImpl extends BaseService implements ActivityService
     {
         if (!ArrayToolkit::requireds(
             $activity,
-            array(
+            [
                 'title',
                 'mediaType',
                 'fromCourseId',
                 'fromCourseSetId',
-            )
+            ]
         )
         ) {
             return true;
@@ -429,7 +637,7 @@ class ActivityServiceImpl extends BaseService implements ActivityService
                 $media['fileId'] = $media['id'];
                 $media['title'] = $media['name'];
 
-                return array($media);
+                return [$media];
             }
         }
     }
@@ -445,6 +653,7 @@ class ActivityServiceImpl extends BaseService implements ActivityService
             $activityConfig = $this->getActivityConfig($activity['mediaType']);
             $media = $activityConfig->get($activity['mediaId']);
             $activity['ext'] = $media;
+            $activity['customComments'] = $media['customComments'] ?? [];
 
             return $activity;
         }
@@ -465,7 +674,7 @@ class ActivityServiceImpl extends BaseService implements ActivityService
             $activities,
             function (&$activity) use ($medias) {
                 //part of the activity have no extension table
-                $activity['ext'] = empty($medias[$activity['mediaId']]) ? array() : $medias[$activity['mediaId']];
+                $activity['ext'] = empty($medias[$activity['mediaId']]) ? [] : $medias[$activity['mediaId']];
             }
         );
 
@@ -491,44 +700,46 @@ class ActivityServiceImpl extends BaseService implements ActivityService
             return true;
         }
 
-        $endLeftSeconds = time() - $activity['endTime'];
-        $isEsLive = EdusohoLiveClient::isEsLive($activity['ext']['liveProvider']);
-
-        if ($this->checkLiveFinished($activity)) {
-            return true;
-        }
-
-        if (EdusohoLiveClient::LIVE_STATUS_CLOSED == $activity['ext']['progressStatus']) {
-            return true;
-        }
-
-        return false;
+        return EdusohoLiveClient::LIVE_STATUS_CLOSED == $activity['ext']['progressStatus'];
     }
 
     public function checkLiveStatus($courseId, $activityId)
     {
         $activity = $this->getActivity($activityId, true);
         if (empty($activity)) {
-            return array('result' => false, 'message' => 'message_response.live_task_not_exist.message');
+            return ['result' => false, 'message' => 'message_response.live_task_not_exist.message'];
         }
 
         if ($activity['fromCourseId'] != $courseId) {
-            return array('result' => false, 'message' => 'message_response.illegal_params.message');
+            return ['result' => false, 'message' => 'message_response.illegal_params.message'];
         }
 
         if (empty($activity['ext']['liveId'])) {
-            return array('result' => false, 'message' => 'message_response.live_class_not_exist.message');
+            return ['result' => false, 'message' => 'message_response.live_class_not_exist.message'];
         }
 
-        if ($activity['startTime'] - time() > self::LIVE_STARTTIME_DIFF_SECONDS) {
-            return array('result' => false, 'message' => 'message_response.live_not_start.message');
+        $setting = $this->getSettingService()->get('magic', []);
+        $setTime = empty($setting['live_entry_time']) ? self::LIVE_STARTTIME_DIFF_SECONDS : $setting['live_entry_time'];
+        $setTime = $this->isTeacher($courseId) ? $setTime : self::LIVE_STARTTIME_DIFF_SECONDS;
+        if ($activity['startTime'] - time() > $setTime) {
+            return ['result' => false, 'message' => 'message_response.live_not_start.message'];
         }
 
-        if ($this->checkLiveFinished($activity)) {
-            return array('result' => false, 'message' => 'message_response.live_over.message');
+        if (EdusohoLiveClient::LIVE_STATUS_CLOSED == $activity['ext']['progressStatus']) {
+            return ['result' => false, 'message' => 'message_response.live_over.message'];
         }
 
-        return array('result' => true, 'message' => '');
+        return ['result' => true, 'message' => ''];
+    }
+
+    protected function isTeacher($courseId)
+    {
+        $user = $this->getCurrentUser();
+        if ($this->getMemberService()->isCourseTeacher($courseId, $user['id'])) {
+            return $user->isTeacher();
+        }
+
+        return false;
     }
 
     public function findFinishedLivesWithinTwoHours()
@@ -536,9 +747,45 @@ class ActivityServiceImpl extends BaseService implements ActivityService
         return $this->getActivityDao()->findFinishedLivesWithinTwoHours();
     }
 
+    public function findActivitiesByMediaIdsAndMediaType($mediaIds, $mediaType)
+    {
+        if (empty($mediaIds)) {
+            return [];
+        }
+
+        return $this->getActivityDao()->findActivitiesByMediaIdsAndMediaType($mediaIds, $mediaType);
+    }
+
     public function getActivityConfig($type)
     {
         return $this->biz["activity_type.{$type}"];
+    }
+
+    public function getActivityByAnswerSceneId($answerSceneId)
+    {
+        $homeworkActivity = $this->getHomeworkActivityService()->getByAnswerSceneId($answerSceneId);
+        if ($homeworkActivity) {
+            $activity = $this->getByMediaIdAndMediaType($homeworkActivity['id'], 'homework');
+            if (!empty($activity)) {
+                return $activity;
+            }
+        }
+
+        $testpaperActivity = $this->getTestpaperActivityService()->getActivityByAnswerSceneId($answerSceneId);
+        if ($testpaperActivity) {
+            $activity = $this->getByMediaIdAndMediaType($testpaperActivity['id'], 'testpaper');
+            if (!empty($activity)) {
+                return $activity;
+            }
+        }
+
+        $exerciseActivity = $this->getExerciseActivityService()->getByAnswerSceneId($answerSceneId);
+        if ($exerciseActivity) {
+            $activity = $this->getByMediaIdAndMediaType($exerciseActivity['id'], 'exercise');
+            if (!empty($activity)) {
+                return $activity;
+            }
+        }
     }
 
     protected function checkLiveFinished($activity)
@@ -551,6 +798,31 @@ class ActivityServiceImpl extends BaseService implements ActivityService
         $esLiveFinished = $isEsLive && $endLeftSeconds > self::LIVE_ENDTIME_DIFF_SECONDS;
 
         return $thirdLiveFinished || $esLiveFinished;
+    }
+
+    public function orderAssessmentSubmitNumber($userIds, $answerSceneId)
+    {
+        $records = $this->getAnswerRecordService()->search(['user_ids' => $userIds, 'answer_scene_id' => $answerSceneId], ['end_time' => 'ASC'], 0, PHP_INT_MAX);
+        $records = ArrayToolkit::group($records, 'user_id');
+        $orderedRecords = [];
+        foreach ($records as $record) {
+            $index = 1;
+            foreach ($record as $userRecord) {
+                $orderedRecords[$userRecord['id']]['answer_record_id'] = $userRecord['id'];
+                $orderedRecords[$userRecord['id']]['submit_num'] = $index;
+                ++$index;
+            }
+        }
+
+        return $orderedRecords;
+    }
+
+    /**
+     * @return AnswerRecordService
+     */
+    protected function getAnswerRecordService()
+    {
+        return $this->createService('ItemBank:Answer:AnswerRecordService');
     }
 
     /**
@@ -636,7 +908,7 @@ class ActivityServiceImpl extends BaseService implements ActivityService
             }
         }
 
-        $fullActivities = array();
+        $fullActivities = [];
         foreach ($activityGroups as $activityGroup) {
             $fullActivities = array_merge($fullActivities, array_values($activityGroup));
         }
@@ -667,5 +939,61 @@ class ActivityServiceImpl extends BaseService implements ActivityService
         $cloudFiles = ArrayToolkit::index($cloudFiles, 'id');
 
         return $cloudFiles;
+    }
+
+    /**
+     * @return TestpaperActivityService
+     */
+    protected function getTestpaperActivityService()
+    {
+        return $this->createService('Activity:TestpaperActivityService');
+    }
+
+    /**
+     * @return HomeworkActivityService
+     */
+    protected function getHomeworkActivityService()
+    {
+        return $this->createService('Activity:HomeworkActivityService');
+    }
+
+    /**
+     * @return ExerciseActivityService
+     */
+    protected function getExerciseActivityService()
+    {
+        return $this->createService('Activity:ExerciseActivityService');
+    }
+
+    /**
+     * @return SettingService
+     */
+    protected function getSettingService()
+    {
+        return $this->createService('System:SettingService');
+    }
+
+    /**
+     * @return MemberService
+     */
+    protected function getMemberService()
+    {
+        return $this->createService('Course:MemberService');
+    }
+
+    /**
+     * @return LiveActivityService
+     */
+    protected function getLiveActivityService()
+    {
+        return $this->createService('Activity:LiveActivityService');
+    }
+
+    /**
+     * @return UserService
+     */
+    protected function getUserService()
+    {
+        return $this->createService('User:UserService');
     }
 }

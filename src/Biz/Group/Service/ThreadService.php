@@ -4,7 +4,6 @@ namespace Biz\Group\Service;
 
 use Biz\System\Annotation\Log;
 
-// TODO refactor. use Thread.
 interface ThreadService
 {
     public function getThread($id);
@@ -13,19 +12,9 @@ interface ThreadService
 
     public function countThreads($conditions);
 
-    public function searchThreadCollects($conditions, $orderBy, $start, $limit);
-
-    public function countThreadCollects($conditions);
-
     public function searchPostsThreadIds($conditions, $orderBy, $start, $limit);
 
     public function countPostsThreadIds($conditions);
-
-    public function isCollected($userId, $threadId);
-
-    public function threadCollect($userId, $threadId);
-
-    public function unThreadCollect($userId, $threadId);
 
     public function getThreadsByIds($ids);
 
@@ -90,6 +79,8 @@ interface ThreadService
 
     public function deleteGoods($id);
 
+    public function deleteThreadsByUserId($userId);
+
     public function getTradeByUserIdAndGoodsId($userId, $goodsId);
 
     public function getGoods($attachId);
@@ -109,4 +100,6 @@ interface ThreadService
     public function addPostAttach($files, $threadId, $postId);
 
     public function getTradeByUserIdAndThreadId($userId, $threadId);
+
+    public function deleteThreadsByGroupId($groupId);
 }

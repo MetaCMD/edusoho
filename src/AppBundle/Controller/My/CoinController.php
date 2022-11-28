@@ -17,6 +17,7 @@ use Symfony\Component\HttpFoundation\Cookie;
 use Symfony\Component\HttpFoundation\Request;
 use AppBundle\Controller\BaseController;
 use Codeages\Biz\Order\Service\OrderService;
+use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 
 class CoinController extends BaseController
 {
@@ -30,7 +31,7 @@ class CoinController extends BaseController
 
         $coinEnabled = $this->setting('coin.coin_enabled');
 
-        if (empty($coinEnabled) || $coinEnabled == 0) {
+        if (empty($coinEnabled) || 0 == $coinEnabled) {
             return $this->createMessageResponse('error', '网校虚拟币未开启！');
         }
 
@@ -132,7 +133,7 @@ class CoinController extends BaseController
 
         $site = $this->getSettingService()->get('site', array());
 
-        $registerUrl = $this->generateUrl('register', array('inviteCode' => $user['inviteCode']), true);
+        $registerUrl = $this->generateUrl('register', array('inviteCode' => $user['inviteCode']), UrlGeneratorInterface::ABSOLUTE_URL);
 
         if (isset($inviteSetting['inviteInfomation_template'])) {
             $variables = array(
@@ -190,7 +191,7 @@ class CoinController extends BaseController
     {
         $inviteSetting = $this->setting('invite');
 
-        if (isset($inviteSetting['get_coupon_setting']) && $inviteSetting['get_coupon_setting'] == 0) {
+        if (isset($inviteSetting['get_coupon_setting']) && 0 == $inviteSetting['get_coupon_setting']) {
             $inviteCoupon = $this->getCouponService()->generateInviteCoupon($inviteUserId, 'pay');
 
             if (!empty($inviteCoupon)) {
@@ -233,7 +234,7 @@ class CoinController extends BaseController
                 $send = $range[1];
             }
 
-            if ($bottomConsume > $range[0] || $bottomConsume == 0) {
+            if ($bottomConsume > $range[0] || 0 == $bottomConsume) {
                 $bottomConsume = $range[0];
             }
         }

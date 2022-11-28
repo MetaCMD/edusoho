@@ -1,6 +1,7 @@
 import EsMessenger from 'app/common/messenger';
 import swfobject from 'es-swfobject';
-
+import { getSupportedPlayer } from 'common/video-player-judge';
+import LocalVideoPlayer from 'app/js/player/local-video-player';
 import CourseAd from './course-ad';
 
 class OpenCoursePlayer {
@@ -29,6 +30,7 @@ class OpenCoursePlayer {
   }
 
   showPlayer() {
+    let self =this;
     $.get(this.url, (lesson) => {
       console.log(this.url, lesson);
       if (lesson.mediaError) {
@@ -42,21 +44,24 @@ class OpenCoursePlayer {
 
       let mediaSourceActionsMap = {
         'iframe': this.onIframe,
-        'self': this.onVideo
+        'bilibili': this.onIframe,
+        'iqiyi': this.onIframe,
+        'self': this.onVideo,
       };
-
       let caller = mediaSourceActionsMap[lesson.mediaSource] ? mediaSourceActionsMap[lesson.mediaSource].bind(this) : undefined;
 
-      if (caller === undefined && (lesson.type == 'video' || lesson.type == 'audio')) {
+      if(lesson.mediaSource === 'NeteaseOpenCourse' && lesson.mediaUri.indexOf('.mp4') != -1){
+        self._playerLocalVideo(lesson.mediaUri);
+      }else if(caller === undefined && (lesson.type == 'video' || lesson.type == 'audio')) {
         caller = this.onSWF.bind(this);
       }
 
       if (caller === undefined) {
         return;
       }
-      
+
       caller(this);
-      
+
     });
   }
 
@@ -71,8 +76,12 @@ class OpenCoursePlayer {
   }
 
   onVideo() {
+    if (getSupportedPlayer() === 'flash') {
+      this.flashTip();
+      return;
+    }
     let lesson = this.lesson;
-            
+
     if (lesson.type == 'video' || lesson.type == 'audio') {
       if (lesson.convertStatus != 'success' && lesson.storage == 'cloud') {
         $('#media-error-dialog').show();
@@ -89,6 +98,10 @@ class OpenCoursePlayer {
   }
 
   onSWF() {
+    if (!swfobject.hasFlashPlayerVersion('11')) {
+      this.flashTip();
+      return;
+    }
     let lesson = this.lesson;
     let $swfContent = $('#lesson-preview-swf-player');
 
@@ -117,7 +130,7 @@ class OpenCoursePlayer {
     let $target = $(e.currentTarget);
 
     let lesson = this.lesson;
-    
+
     if (lesson.mediaError) {
       $('#media-error-dialog').show();
       $('#media-error-dialog').find('.modal-body .media-error').html(lesson.mediaError);
@@ -144,8 +157,16 @@ class OpenCoursePlayer {
   }
 
   getPlayer() {
-    return window.frames['viewerIframe'].window.BalloonPlayer ||
+    return window.frames['viewerIframe'].window.BalloonVideoPlayer ||
            window.frames['viewerIframe'].window.player;
+  }
+
+  _playerLocalVideo(playerUrl) {
+    $('#lesson-video-content').html('<video id="lesson-player" style="width: 100%;height: 100%;" class="video-js vjs-default-skin" controls preload="auto"></video>');
+    new LocalVideoPlayer({
+      'element' : 'lesson-player',
+      'url' : playerUrl,
+    });
   }
 
   videoPlay(playerUrl) {
@@ -200,6 +221,17 @@ class OpenCoursePlayer {
       courseUrl: this.$element.data('get-recommend-course-url')
     });
     this.courseAd.show();
+  }
+
+  flashTip(flag) {
+    const html = `
+    <div class="alert alert-warning alert-dismissible fade in" role="alert">
+      <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+      <span aria-hidden="true">×</span>
+      </button>
+      ${Translator.trans('site.flash_not_install_hint')}
+    </div>`;
+    $('#lesson-preview-swf-player').html(html).show();
   }
 
 }

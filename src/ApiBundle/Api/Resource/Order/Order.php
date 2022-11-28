@@ -5,11 +5,15 @@ namespace ApiBundle\Api\Resource\Order;
 use ApiBundle\Api\ApiRequest;
 use ApiBundle\Api\Resource\AbstractResource;
 use Biz\Common\CommonException;
+use Biz\Goods\GoodsEntityFactory;
+use Biz\Goods\Service\GoodsService;
 use Biz\Order\OrderException;
 use Biz\OrderFacade\Exception\OrderPayCheckException;
 use Biz\OrderFacade\Product\Product;
 use Biz\OrderFacade\Service\OrderFacadeService;
+use Biz\Product\Service\ProductService;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
+use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 
 class Order extends AbstractResource
 {
@@ -23,11 +27,15 @@ class Order extends AbstractResource
         }
 
         $this->filterParams($params);
+        $this->convertOrderParams($params);
 
         try {
             /* @var $product Product */
             $product = $this->getOrderFacadeService()->getOrderProduct($params['targetType'], $params);
             $product->setPickedDeduct($params);
+
+            $this->addCreateDealers($request);
+
             $order = $this->getOrderFacadeService()->create($product);
 
             if (!empty($params['isOrderCreate'])) {
@@ -35,19 +43,19 @@ class Order extends AbstractResource
             }
             // 优惠卷全额抵扣
             if ($this->getOrderFacadeService()->isOrderPaid($order['id'])) {
-                return array(
+                return [
                     'id' => $order['id'],
                     'sn' => $order['sn'],
-                );
+                ];
             } else {
                 $this->handleParams($params, $order);
-                $apiRequest = new ApiRequest('/api/trades', 'POST', array(), $params);
+                $apiRequest = new ApiRequest('/api/trades', 'POST', [], $params);
                 $trade = $this->invokeResource($apiRequest);
 
-                return array(
+                return [
                     'id' => $trade['tradeSn'],
                     'sn' => $trade['tradeSn'],
-                );
+                ];
             }
         } catch (OrderPayCheckException $payCheckException) {
             throw new BadRequestHttpException($payCheckException->getMessage(), $payCheckException, $payCheckException->getCode());
@@ -96,8 +104,19 @@ class Order extends AbstractResource
             $params['unencryptedPayPassword'] = $params['payPassword'];
         }
         if ('Alipay_LegacyWap' == $params['gateway']) {
-            $params['return_url'] = $this->generateUrl('cashier_pay_return_for_app', array('payment' => 'alipay'), true);
-            $params['show_url'] = $this->generateUrl('cashier_pay_return_for_app', array('payment' => 'alipay'), true);
+            $params['return_url'] = $this->generateUrl('cashier_pay_return_for_app', ['payment' => 'alipay'], UrlGeneratorInterface::ABSOLUTE_URL);
+            $params['show_url'] = $this->generateUrl('cashier_pay_return_for_app', ['payment' => 'alipay'], UrlGeneratorInterface::ABSOLUTE_URL);
+        }
+    }
+
+    private function addCreateDealers($request)
+    {
+        $serviceNames = ['Distributor:DistributorProductDealerService', 'S2B2C:S2B2CProductDealerService'];
+
+        foreach ($serviceNames as $serviceName) {
+            $service = $this->getBiz()->service($serviceName);
+            $service->setParams($request->getHttpRequest()->cookies->all());
+            $this->getOrderFacadeService()->addDealer($service);
         }
     }
 
@@ -128,5 +147,49 @@ class Order extends AbstractResource
     protected function getPayService()
     {
         return $this->service('Pay:PayService');
+    }
+
+    /**
+     * @return GoodsService
+     */
+    private function getGoodsService()
+    {
+        return $this->service('Goods:GoodsService');
+    }
+
+    /**
+     * @return ProductService
+     */
+    private function getProductService()
+    {
+        return $this->service('Product:ProductService');
+    }
+
+    /**
+     * @return GoodsEntityFactory
+     */
+    protected function getGoodsEntityFactory()
+    {
+        $biz = $this->getBiz();
+
+        return $biz['goods.entity.factory'];
+    }
+
+    private function convertOrderParams(&$params)
+    {
+        //goodsSpecs
+        if ('goodsSpecs' === $params['targetType']) {
+            $specs = $this->getGoodsService()->getGoodsSpecs($params['targetId']);
+            $goods = $this->getGoodsService()->getGoods($specs['goodsId']);
+            $params['targetType'] = $goods['type'];
+
+            return;
+        }
+        if (in_array($params['targetType'], ['classroom', 'course'])) {
+            $specs = $this->getGoodsEntityFactory()->create($params['targetType'])->getSpecsByTargetId($params['targetId']);
+            $params['targetId'] = $specs['id'];
+
+            return;
+        }
     }
 }

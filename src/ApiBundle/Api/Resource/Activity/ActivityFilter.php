@@ -6,14 +6,18 @@ use ApiBundle\Api\Resource\Filter;
 
 class ActivityFilter extends Filter
 {
-    protected $publicFields = array(
-        'id', 'remark', 'ext', 'mediaType', 'mediaId', 'startTime', 'content', 'title', 'finishData', 'finishType',
-    );
+    protected $publicFields = [
+        'id', 'remark', 'ext', 'mediaType', 'mediaId', 'startTime', 'content', 'title', 'finishData', 'finishType', 'finishCondition',
+    ];
 
     protected function publicFields(&$data)
     {
         if (!empty($data['ext']) && !empty($data['ext']['replayStatus'])) {
             $data['replayStatus'] = $data['ext']['replayStatus'];
+        }
+
+        if (!empty($data['ext']) && !empty($data['ext']['liveProvider'])) {
+            $data['liveProvider'] = $data['ext']['liveProvider'];
         }
 
         if (!empty($data['finishData'])) {
@@ -28,26 +32,20 @@ class ActivityFilter extends Filter
             $data['finishDetail'] = (string) $data['ext']['finishCondition']['finishScore'];
         }
 
+        if (!empty($data['content'])) {
+            $data['content'] = $this->convertAbsoluteUrl($data['content']);
+        }
+
         //testpaper module
         if ('testpaper' == $data['mediaType']) {
             if (!empty($data['ext'])) {
+                $data['testpaperInfo']['testpaperId'] = $data['ext']['mediaId'];
                 $data['testpaperInfo']['testMode'] = $data['ext']['testMode'];
                 $data['testpaperInfo']['limitTime'] = $data['ext']['limitedTime'];
-                $data['testpaperInfo']['redoInterval'] = $data['ext']['redoInterval'] * 60; //分钟
+                $data['testpaperInfo']['redoInterval'] = $data['ext']['redoInterval']; //分钟
                 $data['testpaperInfo']['doTimes'] = $data['ext']['doTimes'];
                 $data['testpaperInfo']['startTime'] = !empty($data['startTime']) ? $data['startTime'] : null;
             }
-        }
-
-        // 老数据 以下三种类型不返回 完成条件
-        $finishConditionWhiteList = array('audio', 'download', 'live');
-        if (in_array($data['mediaType'], $finishConditionWhiteList)) {
-            unset($data['finishDetail']);
-            unset($data['finishType']);
-        }
-        // 老数据文档
-        if (in_array($data['mediaType'], array('text', 'doc'))) {
-            unset($data['finishType']);
         }
 
         unset($data['ext']);

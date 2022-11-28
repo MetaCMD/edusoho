@@ -24,6 +24,10 @@ interface LiveActivityService
 
     public function updateLiveStatus($liveId, $status);
 
+    public function startLive($liveId, $startTime);
+
+    public function closeLive($liveId, $closeTime);
+
     /**
      * @param $id
      *
@@ -36,5 +40,25 @@ interface LiveActivityService
 
     public function search($conditions, $orderbys, $start, $limit);
 
+    public function count($conditions);
+
+    public function updateLiveActivityWithoutEvent($liveActivityId, $fields);
+
+    public function shareLiveReplay($liveActivityId);
+
+    public function unShareLiveReplay($liveActivityId);
+
+    public function updateLiveReplayTags($liveActivityId, $tagIds);
+
+    public function removeLiveReplay($liveActivityId);
+
     public function canUpdateRoomType($liveStartTime);
+
+    public function getByLiveId($liveId);
+
+    public function findLiveActivitiesByLiveIds($liveIds);
+
+    public function getBySyncIdGTAndLiveId($liveId);
+
+    public function findLiveActivitiesByReplayTagId($tagId);
 }

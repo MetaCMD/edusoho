@@ -48,7 +48,7 @@
 {% block content %}
   {% set type = filter.type|default('all') %}
   {% set price = filter.price|default('all') %}
-  {% set orderBy = app.request.query.get('orderBy')|default('latest')%}
+  {% set orderBy = app.request.query.get('orderBy')|default(setting('course.explore_default_orderBy'))%}
   {% set currentLevelId = filter.currentLevelId|default('all') %}
   {% set path = app.request.get('_route') %}
   {% set subCategory = app.request.query.get('subCategory', '') %}
@@ -81,7 +81,7 @@
       </li>
     </ul>
     <div class="filter hidden-xs">
-      {% if is_plugin_installed('vip') %}
+      {% if is_plugin_installed('vip') and setting('vip.enabled', 1) %}
         <div class="btn-group">
           <button type="button" class="btn dropdown-toggle" data-toggle="dropdown" aria-expanded="false"><i
               class="es-icon es-icon-crown text-warning"></i>
@@ -123,12 +123,12 @@
     </div>
   </div>
 
-  <div class="course-list">
+  <div class="course-list course-list-new">
     <div class="row">
       {% if courseSets %}
         {% for courseSet in courseSets %}
-          <div class="col-lg-3 col-md-4 col-xs-6">
-            {% include 'course/widgets/course-grid.html.twig' with {courseSet: courseSet} %}
+          <div class="col-lg-3 col-md-4 col-xs-6 course-item-wrap">
+            {% include 'course/widgets/course-grid-new.html.twig' with {courseSet: courseSet} %}
           </div>
         {% endfor %}
       {% else %}
@@ -136,9 +136,7 @@
       {% endif %}
     </div>
   </div>
-  {% if not mobile %}
-    <nav class="text-center">{{ web_macro.paginator(paginator) }}</nav>
-  {% endif %}
+  <nav class="text-center">{{ web_macro.paginator(paginator) }}</nav>
 {% endblock %}
 
 {% block bottom %}

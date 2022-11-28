@@ -1,4 +1,9 @@
 import Emitter from 'component-emitter';
+import postal from 'postal';
+import 'postal.federation';
+import 'postal.xframe';
+import screenfull from 'es-screenfull';
+
 class BalloonCloudVideoPlayer extends Emitter {
 
   constructor(options) {
@@ -9,16 +14,29 @@ class BalloonCloudVideoPlayer extends Emitter {
   }
 
   setup() {
+    const resultStatus = $('[name="task-result-status"]', window.parent.document).val();
+    const mode = $('[name="mode"]', window.parent.document).val();
+    const activityFinishType = $('#video-content').data('finishType');
+    const activityFinishData = $('#video-content').data('finishData');
+    const disableProgressBar = ((resultStatus === 'start' || resultStatus === 'none') && 'learn' === mode && activityFinishType === 'end' && activityFinishData);
+    const disableSeek = disableProgressBar ? 'forward' : 'none';
+
+    console.log(disableSeek);
     let element = this.options.element;
 
     var self = this;
 
     let extConfig = {};
 
-    //字幕
-    if (self.options.textTrack.length) {
+    if (self.options.resNo) {
       extConfig = Object.assign(extConfig, {
-        textTrack: self.options.textTrack
+        resNo: self.options.resNo
+      });
+    }
+
+    if (self.options.token) {
+      extConfig = Object.assign(extConfig, {
+        token: self.options.token
       });
     }
 
@@ -52,9 +70,9 @@ class BalloonCloudVideoPlayer extends Emitter {
       });
     }
 
-    if (self.options.enablePlaybackRates) {
+    if (!disableProgressBar && self.options.enablePlaybackRates) {
       extConfig = Object.assign(extConfig, {
-        playbackRates: ['0.8', '1.0', '1.25', '1.5', '2.0']
+        playbackRates: ['0.5', '1.0', '1.25', '1.5', '2.0']
       });
     }
 
@@ -64,45 +82,60 @@ class BalloonCloudVideoPlayer extends Emitter {
       });
     }
 
+    if (self.options.playerType) {
+      extConfig = Object.assign(extConfig, {
+        playerType: self.options.playerType
+      });
+    }
+
     if (self.options.controlBar) {
       extConfig = Object.assign(extConfig, {
         controlBar: self.options.controlBar
       });
     }
 
-    if (self.options.statsInfo) {
-      var statsInfo = self.options.statsInfo;
+    if (self.options.user) {
+      var user = self.options.user;
       extConfig = Object.assign(extConfig, {
-        statsInfo: {
-          accesskey: statsInfo.accesskey,
-          globalId: statsInfo.globalId,
-          userId: statsInfo.userId,
-          userName: statsInfo.userName
+        user: {
+          accesskey: user.accesskey,
+          globalId: user.globalId,
+          id: user.id,
+          name: user.name
         }
       });
     }
 
-    const remeberLastPos = self.options.customPos ? true : false;
-    self.options.customPos = self.options.customPos.toString();
+    const rememberLastPos = (self.options.customPos && self.options.rememberLastPos) ? true : false;
 
+    const lang = (document.documentElement.lang == 'zh_CN') ? 'zh-CN' : document.documentElement.lang;
+    self.options.customPos = self.options.customPos.toString();
     extConfig = Object.assign(extConfig, {
       id: $(self.options.element).attr('id'),
+      sdkBaseUri: app.cloudSdkBaseUri,
+      disableDataUpload: app.cloudDisableLogReport,
+      disableSentry: app.cloudDisableLogReport,
       disableControlBar: self.options.disableControlBar,
       disableProgressBar: self.options.disableProgressBar,
+      disableFullscreen: self.options.disableFullscreen,
+      disableSeek: disableSeek,
       playlist: self.options.url,
-      remeberLastPos: remeberLastPos,
-      customPos: self.options.customPos,
-      videoHeaderLength: self.options.videoHeaderLength,
-      autoplay: self.options.autoplay
+      rememberLastPos: rememberLastPos,
+      initPos: self.options.customPos,
+      autoplay: self.options.autoplay,
+      strictMode: !self.options.strictMode,
+      language: lang
     });
-    var player = new VideoPlayerSDK(extConfig);
-
+    console.log(extConfig);
+    var player = new QiQiuYun.Player(extConfig);
     player.on('ready', function(e) {
       self.emit('ready', e);
     });
 
     player.on('timeupdate', function(e) {
       //    player.__events get all the event;
+      self.currentTime = e.currentTime;
+      self.duration = e.duration;
       self.emit('timechange', e);
     });
 
@@ -110,8 +143,17 @@ class BalloonCloudVideoPlayer extends Emitter {
       player.setCurrentTime(self.options.customPos);
     });
 
+    player.on('unableConfirm', function (e) {
+      $('.js-back-link', parent.document)[0].click();
+    });
+
     player.on('ended', function(e) {
-      self.emit('ended', e);
+      let message = {
+        'mode' : self.playMode,
+        'currentTime': self.currentTime,
+        'duration': self.duration,
+      };
+      self.emit('ended', message);
     });
 
     player.on('playing', function(e) {
@@ -122,13 +164,17 @@ class BalloonCloudVideoPlayer extends Emitter {
       self.emit('paused', e);
     });
 
-    player.on('exam.answered', function(e) {
-      var data = e.data;
+    player.on('exam.answered', function(data) {
       data['type'] = self.convertQuestionType(data.type, 'cloud');
       self.emit('answered', data);
     });
 
+    player.on('requestFullscreen', function(data) {
+      self.emit('requestFullscreen', data);
+    })
+
     this.player = player;
+    this._registerChannel();
   }
 
   play() {
@@ -176,7 +222,6 @@ class BalloonCloudVideoPlayer extends Emitter {
           questions: questions
         }
       };
-
       this.player.setExams(exam);
     }
 
@@ -213,6 +258,35 @@ class BalloonCloudVideoPlayer extends Emitter {
     }
 
     return source;
+  }
+
+  _registerChannel() {
+    postal.instanceId('task');
+
+    postal.fedx.addFilter([
+      {
+        channel: 'task-events', //接收 activity iframe的事件
+        topic: 'monitoringEvent',
+        direction: 'in'
+      }
+    ]);
+
+    postal.subscribe({
+      channel: 'task-events',
+      topic: 'monitoringEvent',
+      callback: (type) => {
+        if (screenfull.isFullscreen) {
+          screenfull.exit();
+        }
+        if (type === 'pause') {
+          this.pause();
+        } else if (type === 'play') {
+          this.play();
+        }
+      }
+    });
+
+    return this;
   }
 
 }

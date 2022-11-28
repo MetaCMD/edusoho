@@ -29,7 +29,7 @@
     }
   }
   .course-detail-top {
-    padding-right: 130px;
+    padding-right: 170px;
     .tags {
       float: left;
     }
@@ -42,7 +42,6 @@
       color:@gray-darker;
       font-size: 24px;
       word-wrap: break-word;
-      word-break: break-all;
       @media(max-width:@screen-sm-max){
         max-width: 100%;
       }
@@ -160,6 +159,11 @@
        margin: 0;
        padding: 0;
       }
+
+      .buy-btn-group {
+        right: -10px;
+        bottom: 20px;
+      }
       .course-detail-title {
         margin-right: 12px;
         width: 74px;
@@ -186,7 +190,6 @@
         }
         @media(max-width: @screen-sm-max) {
           padding-left: 15px;
-          min-height: 158px;
           margin: 0px -15px 10px -15px;
           padding-top: 0;
           background-color: transparent;
@@ -196,10 +199,13 @@
             min-height: 158px;
           }
         }
-        &.not-activity {
-          @media(max-width: @screen-xs-min) {
-            min-height: auto;
-          }
+        @media (min-width: @screen-xs-min) and (max-width: @screen-sm-max) {
+          margin-right: 0;
+          margin-bottom: 24px;
+          min-height: auto !important;
+        }
+        @media (max-width: @screen-xs-min) {
+          min-height: auto !important;
         }
         .course-detail-content {
           position: relative;
@@ -550,6 +556,11 @@
     position: absolute;
     right: 10px;
     bottom: 15px;
+  }
+  @media (max-width: @screen-xs-min) {
+    &.buy-btn-group--padding {
+      padding-left: 100px !important;
+    }
   }
   &.course-classroom-tip {
     @media (max-width: @screen-xs-min) {

@@ -28,12 +28,23 @@
 @import "mixins/index.less";
 
 // 插件
+@import "plugin/select2-new.less";
 @import "plugin/select2.less";         //下拉框
 @import "plugin/sortable.less";        //拖动排序
-@import "plugin/sider.less"; 
-@import "plugin/ckeditor.less"; 
+@import "plugin/nouislider.less";
+@import "plugin/sider.less";
+@import "plugin/ckeditor.less";
 @import "plugin/swiper.less";
 @import "plugin/video-player.less";
+@import "plugin/multi-input.less";
+@import "plugin/auto-complete.css";
+@import "plugin/intro.less";
+@import "plugin/perfect-scrollbar.css";
+@import "plugin/daterangepicker.less";
+@import "plugin/datetimepicker.less";
+@import "plugin/jcrop.less";
+@import "plugin/fullcalendar.css";
+@import "plugin/bootstrap-treeview.less";
 
 // 组件---------------------------------------------------------------//
 @import "component/text-line.less";     // 文字＋中划线
@@ -81,9 +92,12 @@
 @import 'component/notify.less';
 @import 'component/infinite.less';
 
+@import "component/reviews.less";
+
 // 模块---------------------------------------------------------------//
 @import "module/class-serve.less";    // 班级服务
 @import "module/course.less";         // 课程
+@import "module/course-new.less";     // 会员免费学课程新版样式
 @import "module/banner.less";         // banner
 @import "module/nav-filter.less";     // 条件过滤
 @import "module/topic.less";          // 话题
@@ -103,6 +117,8 @@
 @import "page/article/index.less";        //资讯
 @import "page/class/index.less";          //班级
 
+@import "page/question-bank/index.less";
+
 @import "page/lesson.less";               //课时播放页
 @import "page/search.less";               //班级列表页
 @import "page/teacher.less";              //教师列表页
@@ -111,15 +127,15 @@
 @import "page/login.less";                //登录页
 @import "page/mobile.less";               //app宣传页
 @import "page/invite-code.less";          //邀请码
-@import "page/question-tr.less";          
+@import "page/question-tr.less";
 @import "page/text-track.less";
 @import "page/user-center.less";          //用户主页
 @import "page/group.less";                //小组
 
-@import "page/live-course.less";             //直播页面            
-@import "page/open-course.less";             //公开课页面            
-@import "page/material.less";         
-@import "page/media-preview.less";         
+@import "page/live-course.less";             //直播页面
+@import "page/open-course.less";             //公开课页面
+@import "page/material.less";
+@import "page/media-preview.less";
 
 @import "page/course-manage/index.less";      //课程管理
 @import "page/course-learn/index.less";       //课程学习
@@ -130,8 +146,33 @@
 @import "page/order.less";                //订单
 @import "page/pay-center.less";           //支付中心
 @import "page/pay-state.less";            //支付状态
+@import "page/my-certificate.less";            //我的证书
 
 @import "page/notification.less";
 
+@import "page/mobile-bind.less";
+
+@import "page/testpaper-manage.less";
+
+@import "page/live-notification.less";
+
+@import "page/face.less"; //云监考
+@import "page/goods/index.less"; // 商品页
+@import "page/goods-min-screen/index.less";
+@import "page/out-focus-mask.less";
+
+@import "page/item-bank-exercise/index.less";
+@import "page/item-bank-exercise/chapter-exercise-header.less";
+@import "page/item-bank-exercise/exercise-show/header.less";
+@import "page/item-bank-exercise/exercise-show/assessment.less";
+@import "page/item-bank-exercise/exercise-show/chapter.less";
+@import "page/item-bank-exercise/exercise-show/advanced.less";
+
 // 针对国际化的样式修改
 @import "es-en/es-en.less";
+@import "page/information-collect.less";
+@import "page/course-manage/manage-info.less";
+@import "page/classroom-manage/index.less";
+
+@import "page/teaching.less";
+@import "page/testpaper-score.less";

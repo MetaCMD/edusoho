@@ -8,19 +8,27 @@ class ObjectCombinationUtil
 {
     private $biz;
 
-    private $serviceMap = array(
+    private $serviceMap = [
         'user' => 'User:UserService',
+        'profile' => 'User:UserService',
         'course' => 'Course:CourseService',
         'courseSet' => 'Course:CourseSetService',
         'classroom' => 'Classroom:ClassroomService',
-    );
+        'goods' => 'Goods:GoodsService',
+        'item_bank_exercise' => 'ItemBankExercise:ExerciseService',
+        'task' => 'Task:TaskService',
+    ];
 
-    private $methodMap = array(
+    private $methodMap = [
         'user' => 'findUsersByIds',
+        'profile' => 'findUserProfilesByIds',
         'course' => 'findCoursesByIds',
-        'courseSet' => 'findCourseSetsByIds',
+        'courseSet' => 'findCourseSetsByIdsWithMarketingInfo',
         'classroom' => 'findClassroomsByIds',
-    );
+        'goods' => 'findGoodsByIds',
+        'item_bank_exercise' => 'findByIds',
+        'task' => 'findTasksByIds',
+    ];
 
     public function __construct($biz)
     {
@@ -30,7 +38,6 @@ class ObjectCombinationUtil
     /**
      * @param $targetObjectType
      * @param $sourceObj
-     * @param array $targetIdFields
      */
     public function single(&$sourceObj, array $targetIdFields, $targetObjectType = 'user')
     {
@@ -49,14 +56,15 @@ class ObjectCombinationUtil
      * 如 multiple($orderLogs, array('user_id'), 'user')，会将 orderLogs 中的 user_id 替换为 user对象
      *
      * @param $targetObjectType 分为 user, course, courseset, 见全局变量 $serviceMap
+     * @param $keepFields 是否保留原有属性
      */
-    public function multiple(&$sourceObjects, array $targetIdFields, $targetObjectType = 'user')
+    public function multiple(&$sourceObjects, array $targetIdFields, $targetObjectType = 'user', $newFieldName = '', $keepFields = false)
     {
         if (!$sourceObjects) {
             return;
         }
 
-        $targetIds = array();
+        $targetIds = [];
         foreach ($sourceObjects as $sourceObject) {
             $tempTargetIds = $this->findTargetIds($sourceObject, $targetIdFields);
             $this->pushIdToArray($targetIds, $tempTargetIds);
@@ -64,7 +72,7 @@ class ObjectCombinationUtil
 
         $targetObjects = $this->findTargetObjects($targetObjectType, $targetIds);
         foreach ($sourceObjects as &$sourceObject) {
-            $this->replaceSourceObject($targetObjects, $sourceObject, $targetIdFields);
+            $this->replaceSourceObject($targetObjects, $sourceObject, $targetIdFields, $newFieldName, $keepFields);
         }
     }
 
@@ -121,7 +129,7 @@ class ObjectCombinationUtil
 
     private function findTargetIds($sourceObj, $targetIdFields)
     {
-        $targetIds = array();
+        $targetIds = [];
         foreach ($targetIdFields as $targetIdField) {
             $targetIdValue = $sourceObj[$targetIdField];
             $this->pushIdToArray($targetIds, $targetIdValue);
@@ -144,12 +152,15 @@ class ObjectCombinationUtil
         return ArrayToolkit::index($targetObjects, 'id');
     }
 
-    private function replaceSourceObject($targetObjects, &$sourceObj, $targetIdFields)
+    private function replaceSourceObject($targetObjects, &$sourceObj, $targetIdFields, $newFieldName = '', $keepFields = true)
     {
         foreach ($targetIdFields as $targetIdField) {
-            $newField = str_replace('Id', '', $targetIdField);
+            $newField = $newFieldName;
+            if (empty($newField)) {
+                $newField = str_replace('Id', '', $targetIdField);
+            }
             $targetIdValue = $sourceObj[$targetIdField];
-            $sourceObj[$newField] = array();
+            $sourceObj[$newField] = [];
 
             if (is_array($targetIdValue)) {
                 foreach ($targetIdValue as $targetId) {
@@ -165,7 +176,7 @@ class ObjectCombinationUtil
                 }
             }
 
-            if ($targetIdField !== $newField) {
+            if ($targetIdField !== $newField && !$keepFields) {
                 unset($sourceObj[$targetIdField]);
             }
         }

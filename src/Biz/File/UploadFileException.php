@@ -6,7 +6,7 @@ use AppBundle\Common\Exception\AbstractException;
 
 class UploadFileException extends AbstractException
 {
-    const EXCEPTION_MODUAL = 23;
+    const EXCEPTION_MODULE = 23;
 
     const NOTFOUND_FILE = 4042301;
 
@@ -28,7 +28,9 @@ class UploadFileException extends AbstractException
 
     const NOTFOUND_ATTACHMENT = 4042310;
 
-    public $messages = array(
+    const ARGUMENTS_INVALID = 5002311;
+
+    public $messages = [
         4042301 => 'exception.uploadfile.file_not_found',
         4032302 => 'exception.uploadfile.forbidden_manage_file',
         5002303 => 'exception.uploadfile.error_status',
@@ -39,5 +41,6 @@ class UploadFileException extends AbstractException
         5002308 => 'exception.uploadfile.local_convert_not_support',
         5002309 => 'exception.uploadfile.extension_not_allowed',
         4042310 => 'exception.uploadfile.not_found_attachment',
-    );
+        5002311 => 'exception.uploadfile.arguments_invalid',
+    ];
 }

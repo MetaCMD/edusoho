@@ -16,9 +16,18 @@
     <div class="cd-content my-teaching-body">
       {{ render(controller('AppBundle:My/User:avatarAlert')) }}
       {% block main %}
+        {% block sidebar %}
+        {% endblock %}
       {% endblock %}
 
       {% block main_mobile %}{% endblock %}
     </div>
+    {% if setting('copyright.thirdCopyright') != 1 and is_saas() %}
+      <div class="fixed-bar">
+        <a href="{{path('feedback')}}"  target='_blank' class="icon-question-text feedback">
+          <span>{{ 'admin.fixed_bar.product_feedback'|trans|raw }}</span>
+        </a>
+      </div>
+    {% endif %}
   </div>
 {% endblock %}

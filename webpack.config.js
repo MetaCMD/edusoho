@@ -5,6 +5,7 @@ module.exports = {
   },
   libs: {
     'base': ['libs/base.js'], // 基础类库
+    'boot_base': ['libs/boot_base.js'],
     'html5shiv': ['html5shiv'],
     'fix-ie': ['console-polyfill', 'respond-js'], //也可以是一个npm依赖包
     'jquery-insertAtCaret': ['libs/jquery-insertAtCaret.js'],
@@ -31,7 +32,11 @@ module.exports = {
     'handlebars': ['handlebars'],
     'fullcalendar': ['libs/fullcalendar/index.js'],
     'ltc-sdk-client': ['libs/ltc-sdk-client/index.js'],
-    'ltc-sdk-server': ['libs/ltc-sdk-server/index.js']
+    'ltc-sdk-server': ['libs/ltc-sdk-server/index.js'],
+    'bootstrap-treeview': ['libs/bootstrap-treeview/index.js'],
+    'province-city-area': ['libs/province-city-area.js'],
+    'element-ui': ['element-ui'],
+    'vue': ['libs/vue.js'],
   },
   noParseDeps: { // 不解析依赖，加快编译速度
     'jquery': 'jquery/dist/jquery.js',
@@ -54,7 +59,8 @@ module.exports = {
     'handlebars': 'handlebars/dist/handlebars.min.js',
     'moment': 'moment/moment.js',
     'fullcalendar': 'es-fullcalendar/dist/fullcalendar.js',
-    'codeages-design': 'codeages-design/dist/codeages-design.js'
+    'codeages-design': 'codeages-design/dist/codeages-design.js',
+    'element-ui': 'element-ui/dist/index.js',
   },
   onlyCopys: [ //纯拷贝文件到输出的libs目录下
     {
@@ -63,6 +69,30 @@ module.exports = {
         '**/samples/**',
         '**/kityformula/libs/**',
       ]
+    },
+    {
+      name: 'element-ui',
+      ignore: [
+        'lib/**',
+        'packages/**',
+        'src/**',
+        'types/**'
+      ],
+    },
+    {
+      name: "swagger-ui/dist/swagger-ui.css",
+    },
+    // 纯拷贝item-bank/lib/itemBank.umd.min.js
+    {
+      name: 'item-bank/lib/itemBank.umd.min.js',
+    },
+    // 纯拷贝item-bank/lib/styles目录下的简墨主色调
+    {
+      name: 'item-bank/lib/styles',
+    },
+    // 纯拷贝item-bank/lib/local目录下的语言包
+    {
+      name: 'item-bank/lib/locale',
     },
     {
       name: 'es5-shim/es5-shim.js',

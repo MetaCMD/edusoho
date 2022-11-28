@@ -1,5 +1,5 @@
 import notify from 'common/notify';
-import { saveRedmineLoading, saveRedmineSuccess } from '../save-redmine';
+import { saveRedmineLoading, saveRedmineSuccess, saveRedmineClear } from '../save-redmine';
 let heigth = ($('.js-sidebar-pane').height() - 175);
 let $content = $('#note-content-field');
 let lastNoteContent;
@@ -24,6 +24,7 @@ $('#note-save-btn').click(function (event) {
 setInterval(saveNote,30000);
 
 function saveNote($btn = null) {
+  $content.val(editor.getData());
   if(!$.trim($content.val())) {
     $btn ? notify('danger', Translator.trans('course.notebook.empty_note_content_notice')) : '';
     return;
@@ -42,5 +43,9 @@ function saveNote($btn = null) {
         $btn.removeAttr('disabled');
       }
       lastNoteContent = data[0].value;
+    })
+    .catch((e) => {
+      $btn.removeAttr('disabled');
+      saveRedmineClear();
     });
 }

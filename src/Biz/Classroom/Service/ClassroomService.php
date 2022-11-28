@@ -6,15 +6,22 @@ use Biz\System\Annotation\Log;
 
 interface ClassroomService
 {
+    const COVER_SIZE_VERSION = '2'; //修改封面比例为16：9版本
+
     /**
      * @param $conditions
      * @param $orderBy
      * @param $start
      * @param $limit
+     * @param $columns
      *
      * @return mixed
      */
-    public function searchMembers($conditions, $orderBy, $start, $limit);
+    public function searchMembers($conditions, $orderBy, $start, $limit, array $columns = []);
+
+    public function searchMembersByClassroomId($classroomId, $conditions, $start, $limit);
+
+    public function countMembersByClassroomId($classroomId, $conditions);
 
     public function findClassroomsByIds(array $ids);
 
@@ -25,6 +32,8 @@ interface ClassroomService
 
     public function getClassroom($id);
 
+    public function hitClassroom($id);
+
     /**
      * @param $id
      * @param $fields
@@ -33,6 +42,8 @@ interface ClassroomService
      * @Log(module="classroom",action="update")
      */
     public function updateClassroom($id, $fields);
+
+    public function updateClassroomInfo($id, $fields);
 
     public function batchUpdateOrg($classroomIds, $orgCode);
 
@@ -83,7 +94,11 @@ interface ClassroomService
      */
     public function deleteClassroom($id);
 
-    public function searchClassrooms($conditions, $orderBy, $start, $limit);
+    public function searchClassrooms($conditions, $orderBy, $start, $limit, $columns = [], $withMarketingInfo = false);
+
+    public function appendSpecsInfo($classrooms);
+
+    public function appendSpecInfo($classroom);
 
     public function countClassrooms($condtions);
 
@@ -159,6 +174,8 @@ interface ClassroomService
 
     public function isClassroomHeadTeacher($classroomId, $userId);
 
+    public function findTeacherCanManagerClassRoomCourseSet($classroomId);
+
     public function updateMember($id, $member);
 
     public function searchMemberCount($conditions);
@@ -169,11 +186,13 @@ interface ClassroomService
 
     public function remarkStudent($classroomId, $userId, $remark);
 
-    public function removeStudent($classroomId, $userId);
+    public function removeStudent($classroomId, $userId, $info = []);
 
-    public function becomeStudent($classroomId, $userId, $info = array());
+    public function removeStudents($classroomId, $userIds, $info);
 
-    public function becomeStudentWithOrder($classroomId, $userId, $info = array());
+    public function becomeStudent($classroomId, $userId, $info = []);
+
+    public function becomeStudentWithOrder($classroomId, $userId, $info = []);
 
     public function becomeAuditor($classroomId, $userId);
 
@@ -194,6 +213,8 @@ interface ClassroomService
 
     public function findClassroomIdsByCourseId($courseId);
 
+    public function findByClassroomId($classroomId);
+
     public function findClassroomsByCourseId($courseId);
 
     /**
@@ -205,6 +226,8 @@ interface ClassroomService
     public function getClassroomCourse($classroomId, $courseId);
 
     public function findCoursesByClassroomId($classroomId);
+
+    public function getClassroomStudentCount($classroomId);
 
     public function findClassroomStudents($classroomId, $start, $limit);
 
@@ -247,6 +270,14 @@ interface ClassroomService
 
     public function updateMemberDeadlineByMemberId($memberId, $deadline);
 
+    public function updateMembersDeadlineByDay($classroomId, $userIds, $day, $waveType);
+
+    public function updateMembersDeadlineByDate($classroomId, $userIds, $date);
+
+    public function checkDeadlineForUpdateDeadline($classroomId, $userIds, $date);
+
+    public function checkDayAndWaveTypeForUpdateDeadline($classroomId, $userIds, $day, $waveType);
+
     public function updateMembersDeadlineByClassroomId($classroomId, $deadline);
 
     public function findWillOverdueClassrooms();
@@ -260,4 +291,22 @@ interface ClassroomService
     public function tryFreeJoin($classroomId);
 
     public function refreshClassroomHotSeq();
+
+    public function appendHasCertificate(array $classrooms);
+
+    public function hasCertificate($classroomId);
+
+    public function searchMembersSignStatistics($classroomId, array $conditions, array $orderBy, $start, $limit);
+
+    public function updateClassroomMembersFinishedStatus($classroomId);
+
+    public function updateClassroomMemberFinishedStatus($classroomId, $userId);
+
+    public function searchClassroomsWithStatistics($conditions, $orderBy, $start, $limit, $columns = []);
+
+    public function calClassroomsTaskNums(array $classrooms, $withMemberInfo = false);
+
+    public function updateMemberFieldsByClassroomIdAndUserId($classroomId, $userId, array $fields);
+
+    public function updateClassroomMembersNoteAndThreadNums($classroomId);
 }

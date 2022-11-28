@@ -6,31 +6,33 @@
 
 {% block main %}
 
-  <div class="panel panel-default panel-col">
+  <div class="panel panel-default panel-col course-favoriate-panel">
     <div class="panel-heading">{{'my.learning.course'|trans}}</span></div>
     <div class="panel-body">
       {% include 'my/learning/course/nav-pill.html.twig' %}
 
       {% for courseFavorite in courseFavorites if courseFavorite %}
-
-        {% if courseFavorite.type == 'course' %}
-          {% set course = data('Course',{courseId:courseFavorite.courseId}) %}
-          {% set courseSet =  data('CourseSet',{id:courseFavorite.courseSetId}) %}
-          {% set coursePath = path('course_show', {id: courseSet.defaultCourseId}) %}
-          {% include 'my/learning/my-course-set-grid.html.twig' %}
-
-        {% elseif courseFavorite.type == 'openCourse' %}
-          {% set course = data('OpenCourse',{courseId:courseFavorite.courseId})|default(null) %}
-          {% set coursePath = path('open_course_show', {courseId:course.id}) %}
-          {% set openCourse = data('OpenCourse',{courseId:courseFavorite.courseId})|default(null)%}
+        {% if courseFavorite.targetType == 'course' %}
+          {% set courseSet =  data('CourseSet',{id:courseFavorite.targetId}) %}
+          {% if courseSet.defaultCourseId|default(null) %}
+            {% set course = data('Course',{courseId:courseSet.defaultCourseId }) %}
+            {% set coursePath = path('course_show', {id: courseSet.defaultCourseId}) %}
+            {% include 'my/learning/my-course-set-grid.html.twig' %}
+          {% endif %}
+        {% elseif courseFavorite.targetType == 'openCourse' %}
+          {% set course = data('OpenCourse',{courseId:courseFavorite.targetId})|default(null) %}
           {% if course %}
             {% include 'open-course/widget/my-open-course-grid.html.twig' %}
+          {% endif %}
+        {% elseif courseFavorite.targetType == 'goods' %}
+          {% set goods = data('Goods',{id:courseFavorite.targetId})|default(null) %}
+          {% if goods %}
+            {% include 'my/learning/my-goods-grid.html.twig' %}
           {% endif %}
         {% endif %}
       {% else %}
         <div class="cd-empty">{{'my.learning.course.favorite_empty'|trans}}</div>
       {% endfor %}
-
       {{ web_macro.paginator(paginator) }}
     </div>
   </div>

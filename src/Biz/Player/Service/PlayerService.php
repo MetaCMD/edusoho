@@ -6,8 +6,6 @@ interface PlayerService
 {
     public function getAudioAndVideoPlayerType($file);
 
-    public function agentInWhiteList($userAgent);
-
     public function getVideoFilePlayer($file, $agentInWhiteList, $context, $ssl);
 
     public function isHiddenVideoHeader($isHidden = false);
@@ -17,4 +15,6 @@ interface PlayerService
     public function getPptFilePlayer($ppt, $ssl);
 
     public function getVideoPlayUrl($file, $context, $ssl);
+
+    public function getFlashFilePlayer($flash, $ssl);
 }

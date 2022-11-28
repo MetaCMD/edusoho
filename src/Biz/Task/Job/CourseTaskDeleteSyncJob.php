@@ -4,13 +4,10 @@ namespace Biz\Task\Job;
 
 use AppBundle\Common\ArrayToolkit;
 use Biz\AppLoggerConstant;
-use Biz\Course\Dao\CourseDao;
-use Biz\System\Service\LogService;
-use Biz\Task\Dao\TaskDao;
 use Biz\Task\Strategy\CourseStrategy;
-use Codeages\Biz\Framework\Scheduler\AbstractJob;
+use Codeages\Biz\Framework\Event\Event;
 
-class CourseTaskDeleteSyncJob extends AbstractJob
+class CourseTaskDeleteSyncJob extends AbstractSyncJob
 {
     public function execute()
     {
@@ -24,17 +21,27 @@ class CourseTaskDeleteSyncJob extends AbstractJob
             $copiedTasks = $this->getTaskDao()->findByCopyIdAndLockedCourseIds($taskId, $copiedCourseIds);
             foreach ($copiedTasks as $ct) {
                 $this->deleteTask($ct['id'], $copiedCourseMap[$ct['courseId']]);
+                $this->getCourseMemberService()->recountLearningDataByCourseId($ct['courseId']);
             }
 
-            $this->getLogService()->info(AppLoggerConstant::COURSE, 'sync_when_task_delete', 'course.log.task.delete.sync.success_tips', array('taskId' => $taskId));
+            $this->getLogService()->info(AppLoggerConstant::COURSE, 'sync_when_task_delete', 'course.log.task.delete.sync.success_tips', ['taskId' => $taskId]);
         } catch (\Exception $e) {
-            $this->getLogService()->error(AppLoggerConstant::COURSE, 'sync_when_task_delete', 'course.log.task.delete.sync.fail_tips', array('error' => $e->getMessage()));
+            $this->getLogService()->error(AppLoggerConstant::COURSE, 'sync_when_task_delete', 'course.log.task.delete.sync.fail_tips', ['error' => $e->getMessage()]);
         }
     }
 
     private function deleteTask($taskId, $course)
     {
-        return  $this->createCourseStrategy($course)->deleteTask($this->getTaskDao()->get($taskId));
+        $task = $this->getTaskDao()->get($taskId);
+        $res = $this->createCourseStrategy($course)->deleteTask($task);
+        $this->dispatchEvent('course.task.delete', new Event($task, ['user' => $this->biz['user']]));
+
+        return $res;
+    }
+
+    private function getCourseMemberService()
+    {
+        return $this->biz->service('Course:MemberService');
     }
 
     /**
@@ -45,29 +52,5 @@ class CourseTaskDeleteSyncJob extends AbstractJob
     private function createCourseStrategy($course)
     {
         return $this->biz->offsetGet('course.strategy_context')->createStrategy($course['courseType']);
-    }
-
-    /**
-     * @return CourseDao
-     */
-    private function getCourseDao()
-    {
-        return $this->biz->dao('Course:CourseDao');
-    }
-
-    /**
-     * @return TaskDao
-     */
-    private function getTaskDao()
-    {
-        return $this->biz->dao('Task:TaskDao');
-    }
-
-    /**
-     * @return LogService
-     */
-    private function getLogService()
-    {
-        return $this->biz->service('System:LogService');
     }
 }

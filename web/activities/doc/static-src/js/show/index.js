@@ -11,22 +11,40 @@ let url = $('.js-cloud-url').data('url');
 })(url);
 
 let $element = $('#document-content');
+let watermarkUrl = $element.data('watermark-url');
 
-initDocPlayer();
+if(watermarkUrl) {
+  $.get(watermarkUrl, function(watermark) {
+    initDocPlayer(watermark);
+  });
+} else {
+  initDocPlayer('');
+}
+
 onFullScreen();
 
-function initDocPlayer() {
-  new QiQiuYun.Player({
+function initDocPlayer(watermark) {
+  const playerConfig = {
     id: 'document-content',
-    playServer: app.cloudPlayServer,
+    // playServer: app.cloudPlayServer,
+    sdkBaseUri: app.cloudSdkBaseUri,
+    disableDataUpload: app.cloudDisableLogReport,
+    disableSentry: app.cloudDisableLogReport,
     resNo: $element.data('resNo'),
     token: $element.data('token'),
     user: {
       id: $element.data('userId'),
       name: $element.data('userName')
     }
-  });
+  }
 
+  if (watermark) {
+    playerConfig.fingerprint = {
+      html: watermark
+    }
+  }
+
+  new QiQiuYun.Player(playerConfig);
 }
 
 

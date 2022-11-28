@@ -29,7 +29,7 @@ define(function(require, exports, module) {
       function(options) {
         var element = options.element  ;
         if ($.trim(element.val()).length <= 0 )
-        { 
+        {
           return false;
         } else {
           return true;
@@ -75,6 +75,11 @@ define(function(require, exports, module) {
       'alphanumeric',
       /^[a-zA-Z0-9_]+$/i,
       Translator.trans('validate_old.alphanumeric.message', {display: '{{display}}'})
+    ],
+    [
+      'only_alphanumeric',
+      /^[a-zA-Z0-9]+$/i,
+      Translator.trans('validate.only_alphanumeric.message', {display: '{{display}}'})
     ],
     [
       'alphabet_underline',
@@ -159,6 +164,21 @@ define(function(require, exports, module) {
       'password',
       /^[\S]{4,20}$/i,
       Translator.trans('validate_old.password.message', {display: '{{display}}'})
+    ],
+    [
+      'check_password_low',
+      /^[\S]{5,20}$/i,
+      Translator.trans('validate.check_password_low.message', {display: '{{display}}'})
+    ],
+    [
+      'check_password_middle',
+      /^(?!^(\d+|[a-zA-Z]+|[^\s\da-zA-Z]+)$)^[\S]{8,20}$/i,
+      Translator.trans('validate.check_password_middle.message', {display: '{{display}}'})
+    ],
+    [
+      'check_password_high',
+      /^(?=.*\d)(?=.*[a-z])(?=.*[A-Z])(?=.*[^\s\da-zA-Z])[\S]{8,32}$/,
+      Translator.trans('validate.check_password_high.message', {display: '{{display}}'})
     ],
     [
       'second_range',

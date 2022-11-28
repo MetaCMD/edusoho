@@ -3,7 +3,10 @@
 {% block title %}{{ 'course.task.learning'|trans({'%taskName%':setting('course.task_name')|default('admin.setting_course.task'|trans)}) }} - {{ parent() }}{% endblock %}
 
 {% set bodyClass = "" %}
+{% set weChatUser = data('WeChatUser', {userId: app.user.id|default(-1)}) %}
 {% do script(['libs/ltc-sdk-server.js', 'libs/perfect-scrollbar.js','libs/es-ckeditor/ckeditor.js','app/js/task/index.js']) %}
+
+{% set showSidebar = app.request.cookies.get('show-sidebar') | default(1) %}
 
 {% block body %}
   {% set preview = app.request.query.get('preview')  %}
@@ -21,16 +24,24 @@
   </div>
 
   <div class="task-dashboard-page js-task-dashboard-page">
-    <div class="dashboard-content" id="dashboard-content">
+    <div class="dashboard-content" id="dashboard-content" style="{% if showSidebar != 0 %} right: 395px; {% endif %}">
       <div class="dashboard-header">
-        <a class="back-link" href="{{ path('my_course_show',{id:course.id}) }}">
+        <a class="back-link js-back-link" href="{{ path('my_course_show',{id:course.id}) }}">
           <i class="es-icon es-icon-chevronleft"></i>{{ 'course.task.learning.back_course_btn'|trans }}
         </a>
-        {{ 'course.task'|trans({'%taskName%':setting('course.task_name')|default('admin.setting_course.task'|trans)}) }}{{ task.number }}：{{ task.title }}
+        {{ display_task_title(task) }}
+        {% if setting('wechat.wechat_notification_enabled')|default(false) and not weChatUser.isSubscribe|default(false) %}
+          <span class="pull-right cd-text-lg js-wechat-qrcode-btn wechat-inform-task hidden-xs" data-img="{{ setting('wechat.account_code') }}" {% if not weChatUser %}data-url="{{ path('login_wechat_qrcode') }}"{% endif %}><span class="wechat-inform-task__tip cd-mr8">{{ 'wechat.notification.course_notification_open'|trans}}</span><i class="es-icon es-icon-qr-code"></i></span>
+        {% endif %}
       </div>
       <div class="dashboard-body">
-        <div class="{% if task.type in ['exercise' , 'homework' ,'testpaper'] %} mobile-scroll-wrapper {% endif %} all-wrapper">
-          <iframe id="task-content-iframe" class="task-content-iframe" name="task-content-iframe"
+        <div class="{% if task.type in ['exercise' , 'homework' ,'testpaper'] %} mobile-scroll-wrapper {% endif %} all-wrapper {% if task.type in ['video'] %} js-video-wrapper {% endif %}">
+          <iframe id="task-content-iframe" class="task-content-iframe js-task-content-iframe" name="task-content-iframe"
+            data-video-play-rule="{{ setting('videoEffectiveTimeStatistics.play_rule', 'no_action') }}"
+            data-task-id="{{ task.id }}"
+            data-task-type="{{ task.type }}"
+            data-course-id="{{ course.id }}"
+            data-next-task="{{ nextTask|default({})|json_encode }}"
             data-next-task-url="{% if nextTask %}{{ path('course_task_show',{'courseId':nextTask.courseId,'id':nextTask.id}) }}{% endif %}"
             data-event-enable="{% if allowEventAutoTrigger %}1{% else %}0{% endif %}"
             data-event-url="{{ path('course_task_trigger', {courseId: task.courseId, id: task.id}) }}"
@@ -73,25 +84,37 @@
                 {% endif %}
               {% endif  %}><strong class="es-icon es-icon-chevronright text-xlg"></strong></a>
         </div>
+
+        {% if not preview and task.type in ['video', 'audio'] and not is_mobile_client() %}
+        <span class="play-continue-switch hidden">
+          <span class="text-bold">连续播放&nbsp;</span>
+          <label class="cd-switch checked js-play-sequence">
+          </label>
+        </span>
+        {% endif %}
         <div class="state-opration js-state-opration" data-learnmode="{{course.learnMode|default('freeMode')}}">
-          <a class="btn btn-gray text-sm js-learn-prompt {% if taskResult.status != 'finish' %}open{% endif %}"
+          <a class="btn btn-gray text-sm js-learn-prompt {% if task.type in ['video'] %}js-learn-video-prompt{% endif %} {% if taskResult.status != 'finish' %}open{% endif %}"
             href="javascript:;"
             data-toggle="popover"
             data-trigger="hover"
             data-placement="top"
-            data-content='{{ 'activity_manage.finish_tips'|trans }}{{ render(controller('AppBundle:Task:finishCondition', {task: task})) }}'>
+            {% if task.type in ['video'] and is_mobile_client() and not is_ios_client() %}data-container="body"{% endif %}
+            data-content=''>
             <i class="es-icon es-icon-help mrs text-md"></i>{{ 'course.task.learning.finish_condition'|trans({'%taskName%':setting('course.task_name')|default('admin.setting_course.task'|trans)}) }}
           </a>
-          <span class="btn text-sm js-learned-prompt color-primary {% if taskResult.status == 'finish' %}open{% endif %}"
+          <span class="btn text-sm js-learned-prompt color-primary {% if task.type in ['video'] %} js-learned-video-prompt {% endif %}{% if task.type in ['video'] and nextTask %} js-next-task{% endif %} {% if taskResult.status == 'finish' %}open{% endif %}"
               href="javascript:;"
               data-toggle="popover"
               data-trigger="hover"
               data-placement="top"
-              data-container=".js-learned-prompt"
+              {% if task.type in ['video'] and is_mobile_client() and not is_ios_client() %}data-container="body"{% else %}data-container=".js-learned-prompt"{% endif %}
               data-content='{% include "task/task-finished-prompt.html.twig" %}'
               data-url="{{ path('course_task_finished_prompt', {courseId: course.id, id: task.id}) }}">
               <i class="es-icon es-icon-iccheckcircleblack24px mrs text-md"></i>{{ 'course.task.learning.finish_btn'|trans({'%taskName%':setting('course.task_name')|default('admin.setting_course.task'|trans)}) }}
           </span>
+        </div>
+        <div class="hidden js-learn-content">
+          {{ 'activity_manage.finish_tips'|trans|raw }}{{ render(controller('AppBundle:Task:finishCondition', {task: task})) }}
         </div>
         {% if course.enableFinish|default(0) == 1 %}
           <a type="button" href="javascript:;"
@@ -110,7 +133,7 @@
 
       </div>
     </div>
-    <div class="dashboard-sidebar hidden-xs" id="dashboard-sidebar">
+    <div class="dashboard-sidebar hidden-xs" id="dashboard-sidebar" style="{% if showSidebar != 0 %} right: 0; {% endif %}">
 
     </div>
   </div>

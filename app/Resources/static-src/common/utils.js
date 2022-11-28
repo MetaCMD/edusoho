@@ -19,6 +19,10 @@ const isMobileDevice = () => {
   return navigator.userAgent.match(/(iPhone|iPod|Android|ios|iPad)/i);
 };
 
+const isMobileUpdateDevice = () => {
+  return !!navigator.userAgent.match(/(Android|Linux|webOS|iPhone|iPod|BlackBerry|Windows Phone|miui|1plus)/i);
+};
+
 const delHtmlTag = (str) => {
   return str.replace(/<[^>]+>/g, '').replace(/&nbsp;/ig, '');
 };
@@ -119,6 +123,17 @@ const strToBase64 = (str) => {
   return (typeof btoa === 'undefined') ? $.base64.encode(str) : btoa(str);
 };
 
+const plainText = (text, length) => {
+  text = $.trim(text);
+  length = parseInt(length);
+
+  if ((length > 0) && (text.length > length)) {
+    text = text.slice(0, length);
+    text += '...';
+  }
+
+  return text;
+};
 
 export {
   Browser,
@@ -132,5 +147,7 @@ export {
   arrayToJson,
   isEmpty,
   strToBase64,
-  arrayIndex
+  arrayIndex,
+  plainText,
+  isMobileUpdateDevice
 };

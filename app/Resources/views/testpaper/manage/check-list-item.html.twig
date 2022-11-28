@@ -20,33 +20,50 @@
       <div class="col-md-8">
         <div class="testpaper-mark-info__title text-overflow" title="{{ taskTitle }}">{{ taskTitle }}</div>
         <div class="testpaper-mark-info__name">
-          {% if testpaper %}{{ testpaper.name }}{% else %}{{ 'course.testpaper_check.testpaper_delete'|trans }}{% endif %}
-        </div>
-        <div class="mbm color-gray">
-          <span class="mrl">{{'course.testpaper_check.start_date'|trans}}
-            {% if task.startTime %}
-              {{ task.startTime|date('Y-m-d H:i') }}
-            {% else %}
-              {{ task.createdTime|date('Y-m-d H:i') }}
-            {% endif %}
+          <span class="text-overflow">
+              {% if 'testpaper' == type|default('') %}
+                {% if testpaper %}{{ 'course.testpaper_manage.create.name'|trans }}： {{ testpaper.name|default('') }}{% else %}{{ 'course.testpaper_check.testpaper_delete'|trans }}{% endif %}
+              {% elseif 'homework' == type|default('') %}
+                {% if testpaper %}{{ 'course.homework_check.create.name'|trans }}： {{ testpaper.name|default('') }}{% else %}{{ 'course.homework_check.homework_delete'|trans }}{% endif %}
+              {% endif %}
           </span>
+          {% if courseSets[task.fromCourseSetId] is defined and courseSets[task.fromCourseSetId].parentId|default(0) %}
+            <div class="mbm mtm color-gray">
+              <span class="mrl text-overflow">{{'user.orders.target_course'|trans}}：
+                {% set course=data('Course',{'courseId':task.courseId}) %}
+                {{ courseSets[task.fromCourseSetId].title|default('')|raw}}{% if courseSets[task.courseId]|default() %}-{{ courseSets[task.courseId].title|default('')|plain_text(8)|raw }}{% endif %}
+              </span>
+            </div>
+          {% endif %}
+          <div class="mbm color-gray">
+            <span class="mrl">{{'course.testpaper_check.start_date'|trans}}
+              {% if task.startTime %}
+                {{ task.startTime|date('Y-m-d H:i') }}
+              {% else %}
+                {{ task.createdTime|date('Y-m-d H:i') }}
+              {% endif %}
+            </span>
+          </div>
         </div>
       </div>
       {% if testpaper %}
         <div class="col-md-4">
-          <div class="testpaper-mark-operation">
-            <div class="col-xs-4 text-center mt10">
+          <div class="testpaper-mark-operation testpaper-mark-inspection-{{task.activityId}}">
+            <div class="col-xs-3 text-center mt10">
               <a class="testpaper-mark-operation__link" href="#modal" data-toggle="modal" data-url="{{ graphUrl }}" data-tooltip="tooltip" data-container="body" data-placement="top" title="{{ 'course.testpaper_check.btn_score_distribution'|trans }}"><i class="es-icon es-icon-chart"></i></a>
             </div>
-            <div class="col-xs-4 text-center mt10"><a class="testpaper-mark-operation__link" href="{{ analysisUrl }}" target="_blank" data-toggle="tooltip" data-container="body" data-placement="top" title="{{ 'course.testpaper_check.btn_question_distribution'|trans }}"><i class="es-icon es-icon-list"></i></a></div>
+            <div class="col-xs-3 text-center mt10"><a class="testpaper-mark-operation__link" href="{{ analysisUrl }}" target="_blank" data-toggle="tooltip" data-container="body" data-placement="top" title="{{ 'course.testpaper_check.btn_question_distribution'|trans }}"><i class="es-icon es-icon-list"></i></a></div>
             
-            <div class="col-xs-4 text-center mt10">
+            <div class="col-xs-3 text-center mt10">
               {% if targetResultInfo.reviewing|default(0) > 0 %}
                 <a class="testpaper-mark-operation__link" href="{{ checkUrl }}" target="_blank" data-toggle="tooltip" data-container="body" data-placement="top" title="{{ 'course.testpaper_check.btn_check'|trans }}" ><i class="es-icon es-icon-double-check"></i></a>
               {% else %}
                 <a class="testpaper-mark-operation__link testpaper-mark-operation__link--disabled" data-toggle="tooltip" data-container="body" data-placement="top" title="{{ 'course.testpaper_check.btn_check'|trans }}" ><i class="es-icon es-icon-double-check gray-medium"></i></a>
               {% endif %}
             </div>
+            {% if is_scene_facein_open(task.answerSceneId) %}
+              <div class="col-xs-3 text-center mt10"><a class="testpaper-mark-operation__link" href="{{ path('facein_inspection_results', {activityId:task.activityId}) }}" target="_blank" data-toggle="tooltip" data-container="body" data-placement="top" title="{{ 'facein.capture_face.inspection_result'|trans }}"><i class="es-icon es-icon-inspection-result"></i></a></div>
+            {% endif %}
           </div>
         </div>
       {% endif %}

@@ -1,6 +1,7 @@
 /app/cache
 /app/logs
 /app/data
+/app/run
 /app/config/plugin_installed.php
 /app/config/plugin.php
 /app/config/parameters.yml
@@ -9,7 +10,9 @@
 /app/config/uc_client_config.php
 /app/config/routing_plugins.yml
 /app/config/sentry.yml
+/app/config/session_redis.yml
 /web/themes/*
+/web/assets/libs/js-sdk/
 !/web/themes/autumn
 !/web/themes/default
 !/web/themes/default-b
@@ -45,6 +48,9 @@ web/php-performance.php
 chunk-manifest.json
 .npminstall.done
 /web/static-dist/*
+!/web/static-dist/*.js
+!/web/static-dist/*.css
+!/web/static-dist/vendors~app
 !/web/static-dist/libs
 !/web/static-dist/app
 !/web/static-dist/jianmotheme
@@ -64,3 +70,6 @@ yarn-error.log
 /reports
 /reports_tmp
 /edusoho-h5
+/app/config/plumber.php
+.package-lock.json
+/js-sdk

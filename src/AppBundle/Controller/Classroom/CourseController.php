@@ -2,19 +2,24 @@
 
 namespace AppBundle\Controller\Classroom;
 
+use AppBundle\Common\ArrayToolkit;
 use AppBundle\Common\ClassroomToolkit;
 use AppBundle\Common\Paginator;
-use AppBundle\Common\ArrayToolkit;
-use Biz\Classroom\ClassroomException;
-use Biz\Taxonomy\Service\TagService;
-use Biz\Course\Service\CourseService;
-use Biz\Course\Service\MemberService;
-use Biz\System\Service\SettingService;
 use AppBundle\Controller\BaseController;
-use Biz\Course\Service\CourseSetService;
+use Biz\Classroom\ClassroomException;
 use Biz\Classroom\Service\ClassroomService;
+use Biz\Course\Service\CourseService;
+use Biz\Course\Service\CourseSetService;
+use Biz\Course\Service\MemberService;
+use Biz\Goods\Service\GoodsService;
+use Biz\Product\Service\ProductService;
+use Biz\S2B2C\Service\S2B2CFacadeService;
+use Biz\System\Service\SettingService;
+use Biz\Taxonomy\Service\TagService;
 use Symfony\Component\HttpFoundation\Request;
-use Biz\Classroom\Service\ClassroomReviewService;
+use VipPlugin\Biz\Marketing\Service\VipRightService;
+use VipPlugin\Biz\Vip\Service\LevelService;
+use VipPlugin\Biz\Vip\Service\VipService;
 
 class CourseController extends BaseController
 {
@@ -22,11 +27,11 @@ class CourseController extends BaseController
     {
         $this->getClassroomService()->tryManageClassroom($classroomId);
 
-        $conditions = array(
+        $conditions = [
             'status' => 'published',
             'parentId' => 0,
-            'types' => array(CourseSetService::NORMAL_TYPE, CourseSetService::LIVE_TYPE),
-        );
+            'types' => [CourseSetService::NORMAL_TYPE, CourseSetService::LIVE_TYPE],
+        ];
 
         $activeCourses = $this->getClassroomService()->findActiveCoursesByClassroomId($classroomId);
         if (!empty($activeCourses)) {
@@ -37,6 +42,8 @@ class CourseController extends BaseController
         if (!$user->isAdmin() && !$user->isSuperAdmin()) {
             $conditions['creator'] = $user['id'];
         }
+
+        $conditions = $this->convertS2b2cConditions($conditions);
         $paginator = new Paginator(
             $this->get('request'),
             $this->getCourseSetService()->countCourseSets($conditions),
@@ -45,21 +52,28 @@ class CourseController extends BaseController
 
         $courseSets = $this->searchCourseSetWithCourses(
             $conditions,
-            array('updatedTime' => 'DESC'),
+            ['updatedTime' => 'DESC'],
             $paginator->getOffsetCount(),
             $paginator->getPerPageCount()
         );
 
         $users = $this->getUsers($courseSets);
 
+        $template = 'classroom-manage/course/course-pick-modal.html.twig';
+        $page = $this->get('request')->query->get('page');
+        if (!empty($page)) {
+            $template = 'course/course-select-list.html.twig';
+        }
+
         return $this->render(
-            'classroom-manage/course/course-pick-modal.html.twig',
-            array(
+            $template,
+            [
                 'users' => $users,
                 'courseSets' => $courseSets,
                 'classroomId' => $classroomId,
                 'paginator' => $paginator,
-            )
+                'type' => 'ajax_pagination',
+            ]
         );
     }
 
@@ -67,24 +81,18 @@ class CourseController extends BaseController
     {
         $classroom = $this->getClassroomService()->getClassroom($classroomId);
         $previewAs = '';
-
         if (empty($classroom)) {
             $this->createNewException(ClassroomException::NOTFOUND_CLASSROOM());
         }
-
         $courses = $this->getClassroomService()->findActiveCoursesByClassroomId($classroomId);
-
         $currentUser = $this->getCurrentUser();
-        $courseMembers = array();
-        $teachers = array();
-
+        $courseMembers = $teachers = [];
         foreach ($courses as &$course) {
             $courseMembers[$course['id']] = $this->getCourseMemberService()->getCourseMember(
                 $course['id'],
                 $currentUser['id']
             );
-
-            $course['teachers'] = empty($course['teacherIds']) ? array() : $this->getUserService()->findUsersByIds(
+            $course['teachers'] = empty($course['teacherIds']) ? [] : $this->getUserService()->findUsersByIds(
                 $course['teacherIds']
             );
             $teachers[$course['id']] = $course['teachers'];
@@ -92,9 +100,7 @@ class CourseController extends BaseController
                 $course['originPrice'] = '0.00';
             }
         }
-
         $user = $this->getCurrentUser();
-
         $member = $user['id'] ? $this->getClassroomService()->getClassroomMember($classroom['id'], $user['id']) : null;
         if (!$this->getClassroomService()->canLookClassroom($classroom['id'])) {
             $classroomName = $this->setting('classroom.name', '班级');
@@ -107,14 +113,20 @@ class CourseController extends BaseController
                 $this->generateUrl('homepage')
             );
         }
-
         $canManageClassroom = $this->getClassroomService()->canManageClassroom($classroomId);
         if ($request->query->get('previewAs') && $canManageClassroom) {
             $previewAs = $request->query->get('previewAs');
         }
-
         $member = $this->previewAsMember($previewAs, $member, $classroom);
+        if (!$member || $member['locked']) {
+            $product = $this->getProductService()->getProductByTargetIdAndType($classroom['id'], 'classroom');
+            $goods = $this->getGoodsService()->getGoodsByProductId($product['id']);
 
+            return $this->redirect($this->generateUrl('goods_show', ['id' => $goods['id'], 'preview' => 'guest' == $request->query->get('previewAs', '') ? 1 : 0]));
+        }
+        if ($this->isPluginInstalled('Vip')) {
+            $member['access'] = $this->getClassroomService()->canLearnClassroom($classroomId);
+        }
         $layout = 'classroom/layout.html.twig';
         $isCourseMember = false;
         if ($member && !$member['locked']) {
@@ -122,7 +134,7 @@ class CourseController extends BaseController
             $layout = 'classroom/join-layout.html.twig';
         }
         if (!$classroom) {
-            $classroomDescription = array();
+            $classroomDescription = [];
         } else {
             $classroomDescription = $classroom['about'];
             $classroomDescription = strip_tags($classroomDescription, '');
@@ -131,7 +143,7 @@ class CourseController extends BaseController
 
         return $this->render(
             'classroom/course/list.html.twig',
-            array(
+            [
                 'classroom' => $classroom,
                 'member' => $member,
                 'teachers' => $teachers,
@@ -140,8 +152,32 @@ class CourseController extends BaseController
                 'layout' => $layout,
                 'classroomDescription' => $classroomDescription,
                 'isCourseMember' => $isCourseMember,
-            )
+            ]
         );
+    }
+
+    /**
+     * @return VipService
+     */
+    protected function getVipService()
+    {
+        return $this->createService('VipPlugin:Vip:VipService');
+    }
+
+    /**
+     * @return LevelService
+     */
+    protected function getVipLevelService()
+    {
+        return $this->createService('VipPlugin:Vip:LevelService');
+    }
+
+    /**
+     * @return VipRightService
+     */
+    protected function getVipRightService()
+    {
+        return $this->createService('VipPlugin:Marketing:VipRightService');
     }
 
     public function searchAction(Request $request, $classroomId)
@@ -152,19 +188,20 @@ class CourseController extends BaseController
         $activeCourses = $this->getClassroomService()->findActiveCoursesByClassroomId($classroomId);
         $excludeIds = ArrayToolkit::column($activeCourses, 'parentCourseSetId');
 
-        $conditions = array(
+        $conditions = [
             'title' => "%{$key}%",
             'status' => 'published',
             'parentId' => 0,
             'excludeIds' => $excludeIds,
-            'excludeTypes' => array('reservation'),
-        );
+            'excludeTypes' => ['reservation'],
+        ];
 
         $user = $this->getCurrentUser();
         if (!$user->isAdmin() && !$user->isSuperAdmin()) {
             $conditions['creator'] = $user['id'];
         }
 
+        $conditions = $this->convertS2b2cConditions($conditions);
         $paginator = new Paginator(
             $this->get('request'),
             $this->getCourseSetService()->countCourseSets($conditions),
@@ -173,7 +210,7 @@ class CourseController extends BaseController
 
         $courseSets = $this->searchCourseSetWithCourses(
             $conditions,
-            array('updatedTime' => 'DESC'),
+            ['updatedTime' => 'DESC'],
             $paginator->getOffsetCount(),
             $paginator->getPerPageCount()
         );
@@ -182,19 +219,19 @@ class CourseController extends BaseController
 
         return $this->render(
             'course/course-select-list.html.twig',
-            array(
+            [
                 'users' => $users,
                 'courseSets' => $courseSets,
                 'paginator' => $paginator,
                 'classroomId' => $classroomId,
                 'type' => 'ajax_pagination',
-            )
+            ]
         );
     }
 
     protected function getUsers($courseSets)
     {
-        $userIds = array();
+        $userIds = [];
         foreach ($courseSets as &$courseSet) {
             // $tags = $this->getTagService()->findTagsByOwner(array('ownerType' => 'course', 'ownerId' => $course['id']));
             if (!empty($courseSet['tags'])) {
@@ -202,7 +239,7 @@ class CourseController extends BaseController
 
                 $courseSet['tags'] = ArrayToolkit::column($tags, 'id');
             }
-            $userIds = array_merge($userIds, array($courseSet['creator']));
+            $userIds = array_merge($userIds, [$courseSet['creator']]);
         }
 
         $users = $this->getUserService()->findUsersByIds($userIds);
@@ -224,17 +261,17 @@ class CourseController extends BaseController
     {
         $user = $this->getCurrentUser();
 
-        if (in_array($previewAs, array('guest', 'auditor', 'member'), true)) {
+        if (in_array($previewAs, ['guest', 'auditor', 'member'], true)) {
             if ('guest' === $previewAs) {
-                return array();
+                return [];
             }
 
-            $deadline = ClassroomToolkit::buildMemberDeadline(array(
+            $deadline = ClassroomToolkit::buildMemberDeadline([
                 'expiryMode' => $classroom['expiryMode'],
                 'expiryValue' => $classroom['expiryValue'],
-            ));
+            ]);
 
-            $member = array(
+            $member = [
                 'id' => 0,
                 'classroomId' => $classroom['id'],
                 'userId' => $user['id'],
@@ -243,14 +280,14 @@ class CourseController extends BaseController
                 'noteNum' => 0,
                 'threadNum' => 0,
                 'remark' => '',
-                'role' => array('auditor'),
+                'role' => ['auditor'],
                 'locked' => 0,
                 'createdTime' => 0,
                 'deadline' => $deadline,
-            );
+            ];
 
             if ('member' === $previewAs) {
-                $member['role'] = array('member');
+                $member['role'] = ['member'];
             }
         }
 
@@ -262,7 +299,7 @@ class CourseController extends BaseController
         $courseSets = $this->getCourseSetService()->searchCourseSets($conditions, $orderbys, $start, $limit);
 
         if (empty($courseSets)) {
-            return array();
+            return [];
         }
 
         $courseSets = ArrayToolkit::index($courseSets, 'id');
@@ -274,7 +311,7 @@ class CourseController extends BaseController
                 }
 
                 if (empty($courseSets[$course['courseSetId']]['courses'])) {
-                    $courseSets[$course['courseSetId']]['courses'] = array($course);
+                    $courseSets[$course['courseSetId']]['courses'] = [$course];
                 } else {
                     $courseSets[$course['courseSetId']]['courses'][] = $course;
                 }
@@ -282,6 +319,16 @@ class CourseController extends BaseController
         }
 
         return array_values($courseSets);
+    }
+
+    private function convertS2b2cConditions($conditions)
+    {
+        $s2b2cConfig = $this->getS2B2CFacadeService()->getS2B2CConfig();
+        if ($s2b2cConfig['enabled']) {
+            $conditions['platform'] = 'self';
+        }
+
+        return $conditions;
     }
 
     /**
@@ -309,14 +356,6 @@ class CourseController extends BaseController
     }
 
     /**
-     * @return ClassroomReviewService
-     */
-    protected function getClassroomReviewService()
-    {
-        return $this->createService('Classroom:ClassroomReviewService');
-    }
-
-    /**
      * @return TagService
      */
     private function getTagService()
@@ -338,5 +377,29 @@ class CourseController extends BaseController
     protected function getCourseMemberService()
     {
         return $this->createService('Course:MemberService');
+    }
+
+    /**
+     * @return S2B2CFacadeService
+     */
+    protected function getS2B2CFacadeService()
+    {
+        return $this->createService('S2B2C:S2B2CFacadeService');
+    }
+
+    /**
+     * @return ProductService
+     */
+    protected function getProductService()
+    {
+        return $this->createService('Product:ProductService');
+    }
+
+    /**
+     * @return GoodsService
+     */
+    protected function getGoodsService()
+    {
+        return $this->createService('Goods:GoodsService');
     }
 }

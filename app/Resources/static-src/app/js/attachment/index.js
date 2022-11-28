@@ -11,6 +11,9 @@ const uploadProcess = {
 
 let uploader = new UploaderSDK({
   id: $uploader.attr('id'),
+  sdkBaseUri: app.cloudSdkBaseUri,
+  disableDataUpload: app.cloudDisableLogReport,
+  disableSentry: app.cloudDisableLogReport,
   initUrl: $uploader.data('initUrl'),
   finishUrl: $uploader.data('finishUrl'),
   accept: $uploader.data('accept'),
@@ -43,9 +46,10 @@ uploader.on('file.finish', (file) => {
     $list = $('[data-role='+currentTarget+']').find('.' + $metas.data('listClass'));
   }
 
-  $.get('/attachment/file/' + file.id + '/show', function (html) {
+  let module = $('input[name="module"]').val();
+  $.get('/attachment/file/' + file.no + '/show', {module: module},function (html) {
     $list.append(html);
-    $ids.val(file.id);
+    $ids.val(file.no);
     $modal.modal('hide');
     $list.siblings('.js-upload-file').hide();
   });

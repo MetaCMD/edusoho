@@ -7,11 +7,42 @@ define(function(require, exports, module) {
     var WebUploader = require('edusoho.webuploader');
 
     exports.run = function() {
+      if($('#show-student-num-open').data('showable') == 1) {
+        $('#show-student-num-open').attr('checked','checked');
+        if($('#show-student-num').data('showmode') == 'studentNum') {
+          $('#show-student-num').attr('checked','checked');
+        } else {
+          $('#show-hit-num').attr('checked','checked');
+        }
+      } else {
+        $('#show-student-num-close').attr('checked','checked');
+        if ($('#show-student-num').data('showmode') == 'studentNum') {
+          $('#show-student-num').attr('checked','checked');
+        } else {
+          $('#show-hit-num').attr('checked','checked');
+        }
+        $('#show_cover_num_mode').attr('hidden','hidden');
+      }
 
-        $(".buy-userinfo-list").sortable({
+      $('#show-student-num-close').click(function(){
+        $('#show_cover_num_mode').attr('hidden','hidden');
+      });
+      $('#show-student-num-open').click(function(){
+        $('#show_cover_num_mode').removeAttr('hidden');
+      });
+
+      $("[name=doc_water_mark_enabled]").on("click", function() {
+        if ($("[name=doc_water_mark_enabled]:checked").val() == 1) {
+          $("#js-doc-water-mark-info").removeClass('hidden');
+        }else{
+          $("#js-doc-water-mark-info").addClass('hidden');
+        }
+      });
+
+      $(".buy-userinfo-list").sortable({
             'distance': 20
         });
-      
+
         if ($("[name=buy_fill_userinfo]:checked").val() == 1) $("#buy-userinfo-list").hide();
         if ($("[name=buy_fill_userinfo]:checked").val() == 0) {
             $("#buy-userinfo-list").hide();
@@ -80,12 +111,12 @@ define(function(require, exports, module) {
           }
         });
 
-        validator.addItem({
-          element: '[name="task_name"]',
-          required: true,
-          rule: 'maxlength{max:10}',
-          display: '名称'
-        });
+        // validator.addItem({
+        //   element: '[name="task_name"]',
+        //   required: true,
+        //   rule: 'maxlength{max:10}',
+        //   display: '名称'
+        // });
         validator.addItem({
           element: '[name="chapter_name"]',
           required: true,
@@ -111,7 +142,7 @@ define(function(require, exports, module) {
                 $form.find('[name=live_logo]').val(response.url);
                 $("#live-course-logo-remove").show();
                 Notify.success(Translator.trans('admin.setting.course.upload_live_course_logo_success_hint'));
-                
+
             });
 
             $("#live-course-logo-remove").on('click', function(){

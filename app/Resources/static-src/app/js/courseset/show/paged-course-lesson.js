@@ -1,9 +1,10 @@
 import ESInfiniteCachedScroll from 'common/es-infinite-cached-scroll';
+import { isEmpty } from 'common/utils';
 
 class PagedCourseLesson {
 
   /**
-   * @param options 
+   * @param options
    * {
    *   'displayAllImmediately': false //默认为false, 如果为true, 则不做分页处理，立刻显示全部
    *   'afterFirstLoad': function() {},
@@ -20,11 +21,33 @@ class PagedCourseLesson {
   _init(options) {
     let finalOptions = $.extend(this._getDefaultOptions(options), options);
     finalOptions.wrapDom = options.wrapTarget;
+    finalOptions.pageSize = this._getPageSizeByMaxLessonsNumOfChapter(finalOptions)
+
     new ESInfiniteCachedScroll(finalOptions);
 
     if (this._displayAllImmediately) {
       this._destroyPaging();
     }
+  }
+
+  // 分页数根据课程的最大章中的数量来设定，小于25则设置为25
+  _getPageSizeByMaxLessonsNumOfChapter(options) {
+    let items = options.data;
+    if (isEmpty(items)) {
+      return;
+    }
+    let pageSize = 0
+    let num = 0
+    items.forEach(item => {
+      if (options.context.isChapter(item)) {
+        pageSize = num > pageSize ? num : pageSize
+        num = 0;
+      } else {
+        num ++;
+      }
+    });
+
+    return pageSize < 25 ? 25 : pageSize + 1
   }
 
   _getDefaultOptions(options) {
@@ -62,15 +85,15 @@ class PagedCourseLesson {
         },
 
         'getChapterName': function(data, context) {
-          return Translator.trans('course.chapter', { chapter_name: context.i18n.i18nChapterName, number: data.number, title: data.title });
+          return Translator.trans('course.chapter', { chapter_name: context.i18n.i18nChapterName, number: data.number, title: data.title, colon: (data.title ? ':' : '') });
         },
 
         'getUnitName': function(data, context) {
-          return Translator.trans('course.unit', { part_name: context.i18n.i18nUnitName, number: data.number, title: data.title });
+          return Translator.trans('course.unit', { part_name: context.i18n.i18nUnitName, number: data.number, title: data.title, colon: (data.title ? ':' : '') });
         },
 
         'getLessonName': function(data, context) {
-          if ('1' == data['isOptional']) {
+          if (context.isItemDisplayedAsOptional(data, context)) {
             return data.title;
           } else {
             return Translator.trans('course.lesson', { part_name: context.i18n.i18nLessonName, number: context.getLessonNum(data, context), title: data.title });
@@ -107,7 +130,7 @@ class PagedCourseLesson {
 
         'getTaskName': function(data, context) {
           if (data.isSingleTaskLesson) {
-            return Translator.trans('course.lesson', { part_name: context.i18n.i18nLessonName, number: context.getLessonNum(data, context), title: data.title });
+            return ('1' == data['isOptional']) ? data.title : Translator.trans('course.lesson', { part_name: context.i18n.i18nLessonName, number: context.getLessonNum(data, context), title: data.title });
           } else {
             return Translator.trans('course.catalogue.task_status.task', { taskName: context.i18n.i18nTaskName, taskNumber: data.number, taskTitle: data.title });
           }
@@ -137,7 +160,7 @@ class PagedCourseLesson {
         },
 
         'lessonContainerClass': function(data, context) {
-          let containerClass = 'color-gray bg-gray-lighter';
+          let containerClass = 'color-gray';
           if (context.isTask(data, context)) {
             return data.isSingleTaskLesson ? containerClass : '';
           } else if (context.isLesson(data, context)) {
@@ -206,6 +229,7 @@ class PagedCourseLesson {
 
         'getLessonNum': function(data, context) {
           let lessonNum = data.number;
+
           if ('1' == context.course.isHideUnpublish) {
             lessonNum = data.published_number;
           }

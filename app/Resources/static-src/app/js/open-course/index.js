@@ -1,5 +1,6 @@
 import ThreadShowWidget from 'app/js/thread/thread-show';
 import notify from 'common/notify';
+import Api from 'common/api';
 
 const main = {
   init: function () {
@@ -30,30 +31,37 @@ const main = {
       var self = $(this);
 
       var isFavorited = self.parent().hasClass('active');
-      var url, action, text;
-      if (isFavorited) {
-        text = Translator.trans('open_course.collect');
-        url = self.data('cancelFavoriteUrl');
-        action = 'removeClass';
-      } else {
-        url = self.data('favoriteUrl');
-        action = 'addClass';
-        text = Translator.trans('open_course.collected');
-      }
+      var text;
 
-      $.post(url, function (data) {
-        if (data['result']) {
-          self.parent().next().html(text);
-          self.parent()[action]('active');
-        } else if (!data['result'] && data['message'] == 'Access Denied') {
+      if (isFavorited) {
+        Api.favorite.unfavorite({
+          data: {
+            'targetType': $(this).data('targetType'),
+            'targetId': $(this).data('targetId'),
+          }
+        }).then((res) => {
+          self.parent().next().html(Translator.trans('open_course.collect'));
+          self.parent().removeClass('active');
+        }).error(() => {
           $('#modal').html();
           $('#modal').load(self.data('loginUrl'));
           $('#modal').modal('show');
-        } else {
-          notify('danger',data['message']);
-        }
-
-      });
+        });
+      } else {
+        Api.favorite.favorite({
+          data: {
+            'targetType': $(this).data('targetType'),
+            'targetId': $(this).data('targetId'),
+          }
+        }).then((res) => {
+          self.parent().next().html(Translator.trans('open_course.collected'));
+          self.parent().addClass('active');
+        }).error(() => {
+          $('#modal').html();
+          $('#modal').load(self.data('loginUrl'));
+          $('#modal').modal('show');
+        });
+      }
     });
   },
   //点击ES直播公开课回放

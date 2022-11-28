@@ -2,13 +2,16 @@
 
 namespace AppBundle\Controller\Course;
 
+use AppBundle\Common\ArrayToolkit;
+use AppBundle\Controller\BaseController;
 use AppBundle\Util\UploaderToken;
+use Biz\Course\LessonException;
 use Biz\Course\Service\CourseService;
 use Biz\Course\Service\CourseSetService;
 use Biz\Course\Service\LessonService;
 use Biz\File\Service\UploadFileService;
+use Biz\System\Service\SettingService;
 use Symfony\Component\HttpFoundation\Request;
-use AppBundle\Controller\BaseController;
 
 class LessonManageController extends BaseController
 {
@@ -18,36 +21,45 @@ class LessonManageController extends BaseController
 
         $this->getCourseLessonService()->isLessonCountEnough($course['id']);
 
-        if ('POST' == $request->getMethod()) {
+        if ($request->isMethod('POST')) {
             $formData = $request->request->all();
 
             $formData['_base_url'] = $request->getSchemeAndHttpHost();
             $formData['fromUserId'] = $this->getUser()->getId();
             $formData['fromCourseSetId'] = $course['courseSetId'];
-            $defaultFinishCondition = $this->getDefaultFinishCondition($formData['mediaType']);
+            $formData['redoInterval'] = empty($formData['redoInterval']) ? 0 : $formData['redoInterval'] * 60;
 
-            $formData = array_merge($defaultFinishCondition, $formData);
+            $formData = array_merge($this->getDefaultFinishCondition($formData['mediaType']), $formData);
             list($lesson, $task) = $this->getCourseLessonService()->createLesson($formData);
 
             return $this->getTaskJsonView($course, $task);
         }
 
-        return $this->forward('AppBundle:TaskManage:create', array('courseId' => $course['id']));
+        return $this->forward('AppBundle:TaskManage:create', ['courseId' => $course['id']]);
     }
 
     private function getDefaultFinishCondition($mediaType)
     {
         $activityConfigManager = $this->get('activity_config_manager');
         $activityConfig = $activityConfigManager->getInstalledActivity($mediaType);
-        if (empty($activityConfig['finish_condition'])) {
-            return array();
-        }
-        $findishCondition = reset($activityConfig['finish_condition']);
 
-        return array(
-            'finishType' => $findishCondition['type'],
-            'finishData' => empty($findishCondition['value']) ? '' : $findishCondition['value'],
-        );
+        if (empty($activityConfig['finish_condition'])) {
+            return [];
+        }
+
+        if ('video' === $mediaType) {
+            $setting = $this->getSettingService()->get('videoEffectiveTimeStatistics');
+            $finishType = empty($setting) ? 'end' : ('playing' === $setting['statistical_dimension'] ? 'watchTime' : 'time');
+            $activityFinishConditions = array_column($activityConfig['finish_condition'], null, 'type');
+            $finishCondition = $activityFinishConditions[$finishType];
+        } else {
+            $finishCondition = reset($activityConfig['finish_condition']);
+        }
+
+        return [
+            'finishType' => $finishCondition['type'],
+            'finishData' => empty($finishCondition['value']) ? '' : $finishCondition['value'],
+        ];
     }
 
     public function batchCreateAction(Request $request, $courseId)
@@ -59,8 +71,8 @@ class LessonManageController extends BaseController
             $fileId = $request->request->get('fileId');
             $file = $this->getUploadFileService()->getFile($fileId);
 
-            if (!in_array($file['type'], array('document', 'video', 'audio', 'ppt', 'flash'))) {
-                return $this->createJsonResponse(array('error' => '不支持的文件类型'));
+            if (!in_array($file['type'], ['document', 'video', 'audio', 'ppt'])) {
+                return $this->createJsonResponse(['error' => '不支持的文件类型']);
             }
             $formData = $this->createTaskByFileAndCourse($file, $course);
             $formData['mode'] = $mode;
@@ -79,34 +91,52 @@ class LessonManageController extends BaseController
         $params = $parser->parse($token);
 
         if (!$params) {
-            return $this->createJsonResponse(array('error' => 'bad token'));
+            return $this->createJsonResponse(['error' => 'bad token']);
         }
 
-        $lessonCount = $this->getCourseLessonService()->countLessons(array('courseId' => $course['id']));
+        $lessonCount = $this->getCourseLessonService()->countLessons(['courseId' => $course['id']]);
         $enableLessonCount = $this->getCourseLessonService()->getLessonLimitNum() - $lessonCount;
 
         return $this->render(
             'course-manage/batch-create/batch-create-modal.html.twig',
-            array(
+            [
                 'token' => $token,
-                'targetType' => $params['targetType'],
+                'targetType' => 'course-batch-create-lesson',
                 'courseId' => $courseId,
                 'mode' => $mode,
                 'enableLessonCount' => $enableLessonCount,
-            )
+            ]
         );
     }
 
     public function validLessonNumAction(Request $request, $courseId)
     {
         $uploadLessonNum = $request->request->get('number');
-        $lessonCount = $this->getCourseLessonService()->countLessons(array('courseId' => $courseId));
+        $lessonCount = $this->getCourseLessonService()->countLessons(['courseId' => $courseId]);
         $lessonLimitNum = $this->getCourseLessonService()->getLessonLimitNum();
         if ($beyondNum = $lessonLimitNum - $lessonCount - $uploadLessonNum < 0) {
-            return $this->createJsonResponse(array('error' => '上传文件数量超出', 'beyondNum' => $beyondNum));
+            return $this->createJsonResponse(['error' => '上传文件数量超出', 'beyondNum' => $beyondNum]);
         }
 
-        return $this->createJsonResponse(array('success' => true));
+        return $this->createJsonResponse(['success' => true]);
+    }
+
+    public function validLessonTypeAction(Request $request)
+    {
+        $fileIds = $request->request->get('fileIds');
+        $files = $this->getUploadFileService()->findFilesByIds($fileIds);
+
+        foreach ($files as $file) {
+            if ('flash' == $file['type']) {
+                $invalidFileIds[] = $file['id'];
+            }
+        }
+
+        if (!empty($invalidFileIds)) {
+            return $this->createJsonResponse(['status' => false, 'invalidFileIds' => $invalidFileIds]);
+        }
+
+        return $this->createJsonResponse(['status' => true]);
     }
 
     public function updateAction(Request $request, $courseId, $lessonId)
@@ -118,69 +148,128 @@ class LessonManageController extends BaseController
             $fields = $request->request->all();
             $lesson = $this->getCourseLessonService()->updateLesson($lesson['id'], $fields);
 
-            return $this->render('lesson-manage/chapter/item.html.twig', array(
+            return $this->render('lesson-manage/chapter/item.html.twig', [
                 'course' => $course,
                 'chapter' => $lesson,
-            ));
+            ]);
         }
 
-        return $this->render('lesson-manage/chapter/modal.html.twig', array(
+        return $this->render('lesson-manage/chapter/modal.html.twig', [
             'course' => $course,
             'type' => 'lesson',
             'chapter' => $lesson,
-        ));
+        ]);
     }
 
     public function publishAction(Request $request, $courseId, $lessonId)
     {
-        $this->getCourseLessonService()->publishLesson($courseId, $lessonId);
+        try {
+            $this->getCourseLessonService()->publishLesson($courseId, $lessonId);
+        } catch (\Exception $e) {
+            return $this->createJsonResponse(['success' => false, 'message' => $this->trans('exception.task.forbidden_publish_sync_task')]);
+        }
 
-        return $this->createJsonResponse(array('success' => true));
+        return $this->createJsonResponse(['success' => true]);
     }
 
     public function unpublishAction(Request $request, $courseId, $lessonId)
     {
-        $this->getCourseLessonService()->unpublishLesson($courseId, $lessonId);
+        try {
+            $this->getCourseLessonService()->unpublishLesson($courseId, $lessonId);
+        } catch (\Exception $e) {
+            return $this->createJsonResponse(['success' => false, 'message' => $this->trans('course.manage.lesson_copy_ing')]);
+        }
 
-        return $this->createJsonResponse(array('success' => true));
+        return $this->createJsonResponse(['success' => true]);
+    }
+
+    public function batchPublishAction(Request $request, $courseId)
+    {
+        $lessonIds = $request->request->get('lessonIds');
+
+        if (empty($lessonIds)) {
+            $this->createNewException(LessonException::PARAMETERS_MISSING());
+        }
+
+        $lessons = $this->getCourseLessonService()->batchUpdateLessonsStatus($courseId, $lessonIds, 'published');
+
+        if (empty($lessons)) {
+            return $this->createJsonResponse(['success' => true]);
+        }
+
+        return $this->createJsonResponse(ArrayToolkit::column($lessons, 'id'));
+    }
+
+    public function batchUnpublishAction(Request $request, $courseId)
+    {
+        $lessonIds = $request->request->get('lessonIds');
+
+        if (empty($lessonIds)) {
+            $this->createNewException(LessonException::PARAMETERS_MISSING());
+        }
+
+        $lessons = $this->getCourseLessonService()->batchUpdateLessonsStatus($courseId, $lessonIds, 'unpublished');
+
+        if (empty($lessons)) {
+            return $this->createJsonResponse(['success' => true]);
+        }
+
+        return $this->createJsonResponse(ArrayToolkit::column($lessons, 'id'));
     }
 
     public function deleteAction(Request $request, $courseId, $lessonId)
     {
         $this->getCourseLessonService()->deleteLesson($courseId, $lessonId);
 
-        return $this->createJsonResponse(array('success' => true));
+        return $this->createJsonResponse(['success' => true]);
+    }
+
+    public function batchDeleteAction(Request $request, $courseId)
+    {
+        $lessonIds = $request->request->get('lessonIds');
+
+        if (empty($lessonIds)) {
+            $this->createNewException(LessonException::PARAMETERS_MISSING());
+        }
+
+        $lessons = $this->getCourseLessonService()->batchDeleteLessons($courseId, $lessonIds);
+
+        if (empty($lessons)) {
+            return $this->createJsonResponse(['success' => true]);
+        }
+
+        return $this->createJsonResponse(ArrayToolkit::column($lessons, 'id'));
     }
 
     public function setOptionalAction(Request $request, $courseId, $lessonId)
     {
         $this->getCourseLessonService()->setOptional($courseId, $lessonId);
 
-        return $this->createJsonResponse(array('success' => true));
+        return $this->createJsonResponse(['success' => true]);
     }
 
     public function unsetOptionalAction(Request $request, $courseId, $lessonId)
     {
         $this->getCourseLessonService()->unsetOptional($courseId, $lessonId);
 
-        return $this->createJsonResponse(array('success' => true));
+        return $this->createJsonResponse(['success' => true]);
     }
 
     private function createTaskByFileAndCourse($file, $course)
     {
-        $task = array(
+        $task = [
             'mediaType' => $file['type'],
             'fromCourseId' => $course['id'],
             'fromUserId' => $this->getUser()->getId(),
             'fromCourseSetId' => $course['courseSetId'],
             'courseSetType' => 'normal',
-            'media' => json_encode(array('source' => 'self', 'id' => $file['id'], 'name' => $file['filename'])),
+            'media' => json_encode(['source' => 'self', 'id' => $file['id'], 'name' => $file['filename']]),
             'type' => $file['type'],
             'length' => $file['length'],
             'title' => str_replace(strrchr($file['filename'], '.'), '', $file['filename']),
-            'ext' => array('mediaSource' => 'self', 'mediaId' => $file['id']),
+            'ext' => ['mediaSource' => 'self', 'mediaId' => $file['id']],
             'categoryId' => 0,
-        );
+        ];
         if ('document' == $file['type']) {
             $task['type'] = 'doc';
             $task['mediaType'] = 'doc';
@@ -238,5 +327,13 @@ class LessonManageController extends BaseController
     protected function getUploadFileService()
     {
         return $this->createService('File:UploadFileService');
+    }
+
+    /**
+     * @return SettingService
+     */
+    protected function getSettingService()
+    {
+        return $this->createService('System:SettingService');
     }
 }

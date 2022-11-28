@@ -2,6 +2,7 @@
 
 namespace Tests\Unit\Card\Service;
 
+use AppBundle\Common\ReflectionUtils;
 use Biz\Card\Service\CardService;
 use Biz\System\Service\SettingService;
 use Biz\User\Service\UserService;
@@ -217,6 +218,42 @@ class CardServiceTest extends BaseTestCase
         $this->assertEmpty($result);
     }
 
+    public function testIsAvailable()
+    {
+        $result = ReflectionUtils::invokeMethod($this->getCardService(), 'isAvailable', array(array('status' => 'used'), 'all', 'fullDiscount'));
+        $this->assertFalse($result);
+
+        $result = ReflectionUtils::invokeMethod($this->getCardService(), 'isAvailable', array(array('status' => 'receive', 'deadline' => time() - 2 * 86400), 'all', 'fullDiscount'));
+        $this->assertFalse($result);
+
+        $result = ReflectionUtils::invokeMethod($this->getCardService(), 'isAvailable', array(array('status' => 'receive', 'deadline' => time(), 'targetType' => 'all'), 'all', 1));
+        $this->assertTrue($result);
+
+        $result = ReflectionUtils::invokeMethod($this->getCardService(), 'isAvailable', array(array('status' => 'receive', 'deadline' => time(), 'targetType' => 'course', 'targetId' => 1, 'targetIds' => array(1)), 'course', 1));
+        $this->assertTrue($result);
+    }
+
+    public function testPrepareRecordConditions()
+    {
+        $this->mockBiz(
+            'User:UserService',
+            array(
+                array(
+                    'functionName' => 'searchUsers',
+                    'returnValue' => array(array('id' => 1)),
+                ),
+            )
+        );
+        $result = ReflectionUtils::invokeMethod($this->getCardService(), '_prepareRecordConditions', array(array(
+            'nickname' => 'stu_1',
+            'startDateTime' => 1561543220,
+            'endDateTime' => 1561553220,
+        )));
+
+        $this->assertEquals(1561543220, $result['reciveStartTime']);
+        $this->assertEquals(1561553220, $result['reciveEndTime']);
+    }
+
     /**
      * @return CardService
      */
@@ -264,7 +301,7 @@ class CardServiceTest extends BaseTestCase
         $user = array();
         $user['email'] = 'user@user.com';
         $user['nickname'] = 'user';
-        $user['password'] = 'user';
+        $user['password'] = 'user123';
         $user = $this->getUserService()->register($user);
         $user['currentIp'] = '127.0.0.1';
         $user['roles'] = array('ROLE_USER', 'ROLE_SUPER_ADMIN', 'ROLE_TEACHER');

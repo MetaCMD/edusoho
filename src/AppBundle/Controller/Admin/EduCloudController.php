@@ -1158,6 +1158,7 @@ class EduCloudController extends BaseController
             'sms_user_pay' => 'on',
             'sms_forget_pay_password' => 'on',
             'sms_bind' => 'on',
+            'sms_login' => 'on',
             'sms_classroom_publish' => 'off',
             'sms_course_publish' => 'off',
             'sms_normal_lesson_publish' => 'off',
@@ -1742,7 +1743,7 @@ class EduCloudController extends BaseController
     public function getAdAction()
     {
         $api = CloudAPIFactory::create('root');
-        $result = $api->get('/edusoho-ad');
+        $result = $api->get('/edusoho-ad', array('adType' => 'oldBackground'));
 
         return $this->createJsonResponse($result);
     }
@@ -1780,7 +1781,7 @@ class EduCloudController extends BaseController
     {
         $user = $this->getUser();
 
-        $callback = $this->get('request')->getSchemeAndHttpHost().$this->generateUrl('callback', array('type' => 'cloudFile', 'ac' => 'files.notify'));
+        $callback = $this->get('request_stack')->getMasterRequest()->getSchemeAndHttpHost().$this->generateUrl('callback', array('type' => 'cloudFile', 'ac' => 'files.notify'));
 
         $this->getCloudFileService()->deleteCloudMP4Files($user['id'], $callback);
 

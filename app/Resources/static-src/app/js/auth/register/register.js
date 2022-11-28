@@ -6,6 +6,7 @@ export default class Register {
     this.drag = $('#drag-btn').length ? new Drag($('#drag-btn'), $('.js-jigsaw'), {
       limitType: 'web_register'
     }) : null;
+    this.setValidateRule();
     this.dragEvent();
     this.initValidator();
     this.inEventMobile();
@@ -20,6 +21,12 @@ export default class Register {
         self._smsBtnable();
       });
     }
+  }
+
+  setValidateRule() {
+    $.validator.addMethod('spaceNoSupport', function (value, element) {
+      return value.indexOf(' ') < 0;
+    }, $.validator.format(Translator.trans('validate.have_spaces')));
   }
 
   initValidator() {
@@ -143,10 +150,7 @@ export default class Register {
             type: 'get',
           }
         },
-        password: {
-          minlength: 5,
-          maxlength: 20,
-        },
+        password: this._passwordValidateRules(),
         email: {
           required: true,
           email: true,
@@ -191,9 +195,15 @@ export default class Register {
         },
         dragCaptchaToken: {
           required: true,
-        }
+        },
+        agree_policy: {
+          required: true,
+        },
       },
       messages: {
+        nickname: {
+          required: Translator.trans('auth.register.nickname_required_error_hit'),
+        },
         verifiedMobile: {
           required: Translator.trans('validate.phone.message'),
         },
@@ -206,8 +216,24 @@ export default class Register {
         dragCaptchaToken: {
           required: Translator.trans('auth.register.drag_captcha_tips')
         },
+        agree_policy: {
+          required: Translator.trans('validate.valid_policy_input.message'),
+        },
+        password: {
+          required: Translator.trans('auth.register.password_required_error_hint'),
+        },
       },
     };
+  }
+
+  _passwordValidateRules() {
+    let passwordLevel = $('#password_level').val();
+    let rules = {
+      spaceNoSupport: true,
+    };
+    rules[`check_password_${passwordLevel}`] = true;
+
+    return rules;
   }
 
   emSmsCodeValidate(mobile) {
@@ -227,6 +253,6 @@ export default class Register {
       if ('undefined' !== window._VISITOR_ID) {
         $('[name="registerVisitId"]').val(window._VISITOR_ID);
       }
-    })
+    });
   }
 }

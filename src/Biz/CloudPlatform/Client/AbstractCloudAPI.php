@@ -5,10 +5,13 @@ namespace Biz\CloudPlatform\Client;
 use Biz\System\Service\SettingService;
 use Psr\Log\LoggerInterface;
 use Topxia\Service\Common\ServiceKernel;
+use AppBundle\Common\Exception\UnexpectedValueException;
 
 class AbstractCloudAPI
 {
-    const VERSION = 'v1';
+    const DEFAULT_API_VERSION = 'v1';
+
+    protected $apiVersion = self::DEFAULT_API_VERSION;
 
     protected $userAgent = 'EduSoho Cloud API Client 1.0';
 
@@ -43,12 +46,23 @@ class AbstractCloudAPI
             $this->setApiUrl($options['apiUrl']);
         }
 
+        if (!empty($options['apiVersion'])) {
+            $this->setApiVersion($options['apiVersion']);
+        }
+
         $this->debug = empty($options['debug']) ? false : true;
     }
 
     public function setApiUrl($url)
     {
         $this->apiUrl = rtrim($url, '/');
+
+        return $this;
+    }
+
+    public function setApiVersion($apiVersion)
+    {
+        $this->apiVersion = $apiVersion;
 
         return $this;
     }
@@ -102,7 +116,7 @@ class AbstractCloudAPI
     {
         $requestId = substr(md5(uniqid('', true)), -16);
 
-        $url = $this->apiUrl.'/'.self::VERSION.$uri;
+        $url = $this->apiUrl.'/'.$this->apiVersion.$uri;
 
         if ($this->isWithoutNetwork()) {
             if ($this->debug && $this->logger) {
@@ -143,6 +157,9 @@ class AbstractCloudAPI
 
         $headers[] = 'Auth-Token: '.$this->_makeAuthToken($url, 'GET' == $method ? array() : $params);
         $headers[] = 'API-REQUEST-ID: '.$requestId;
+        if (isset($_SERVER['TRACE_ID']) && $_SERVER['TRACE_ID']) {
+            $headers[] = 'TRACE-ID: '.$_SERVER['TRACE_ID'];
+        }
 
         curl_setopt($curl, CURLOPT_HTTPHEADER, $headers);
         curl_setopt($curl, CURLOPT_URL, $url);
@@ -174,11 +191,6 @@ class AbstractCloudAPI
             throw new CloudAPIIOException("Connect api server timeout (url: {$url}).");
         }
 
-        if (empty($curlinfo['starttransfer_time'])) {
-            $this->logger && $this->logger->error("[{$requestId}] API_TIMEOUT", $context);
-            throw new CloudAPIIOException("Request api server timeout (url:{$url}).");
-        }
-
         if ($curlinfo['http_code'] >= 500) {
             $this->logger && $this->logger->error("[{$requestId}] API_RESOPNSE_ERROR", $context);
             throw new CloudAPIIOException("Api server internal error (url:{$url}).");
@@ -192,6 +204,21 @@ class AbstractCloudAPI
         }
 
         if ($this->debug && $this->logger) {
+            $biz = ServiceKernel::instance()->getBiz();
+            if (!$biz->offsetExists('cloud_api_collector')) {
+                $biz->offsetSet('cloud_api_collector', array());
+            }
+
+            $collector = $biz->offsetGet('cloud_api_collector');
+            $collector[] = array(
+                'requestId' => $requestId,
+                'method' => $method,
+                'url' => $url,
+                'params' => $params,
+                'headers' => $headers,
+                'result' => $result,
+            );
+            $biz->offsetSet('cloud_api_collector', $collector);
             $this->logger->debug("[{$requestId}] {$method} {$url}", array('params' => $params, 'headers' => $headers));
         }
 
@@ -203,7 +230,7 @@ class AbstractCloudAPI
         $matched = preg_match('/:\/\/.*?(\/.*)$/', $url, $matches);
 
         if (!$matched) {
-            throw new \RuntimeException('Make AuthToken Error.');
+            throw new UnexpectedValueException('Make AuthToken Error.');
         }
 
         $text = $matches[1]."\n".json_encode($params)."\n".$this->secretKey;

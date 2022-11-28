@@ -9,9 +9,11 @@ use ApiBundle\Api\Resource\AbstractResource;
 use AppBundle\Common\ArrayToolkit;
 use AppBundle\Common\DeviceToolkit;
 use AppBundle\Common\EncryptionToolkit;
+use AppBundle\Common\Exception\AccessDeniedException;
 use AppBundle\Common\MathToolkit;
 use Biz\Common\BizSms;
 use Biz\Common\CommonException;
+use Biz\Distributor\Util\DistributorCookieToolkit;
 use Biz\Sms\SmsException;
 use Biz\System\SettingException;
 
@@ -56,25 +58,25 @@ class User extends AbstractResource
     public function add(ApiRequest $request)
     {
         // 目前只支持手机注册
-        $auth = $this->getSettingService()->get('auth', array());
-        if (!(isset($auth['register_mode']) && in_array($auth['register_mode'], array('mobile', 'email_or_mobile')))) {
+        $auth = $this->getSettingService()->get('auth', []);
+        if (!(isset($auth['register_mode']) && in_array($auth['register_mode'], ['mobile', 'email_or_mobile']))) {
             throw SettingException::FORBIDDEN_MOBILE_REGISTER();
         }
 
         //校验云短信开启
-        $smsSetting = $this->getSettingService()->get('cloud_sms', array());
+        $smsSetting = $this->getSettingService()->get('cloud_sms', []);
         if (empty($smsSetting['sms_enabled'])) {
             throw SettingException::FORBIDDEN_SMS_SEND();
         }
 
         //校验字段缺失
         $fields = $request->request->all();
-        if (!ArrayToolkit::requireds($fields, array(
+        if (!ArrayToolkit::requireds($fields, [
             'mobile',
             'smsToken',
             'smsCode',
             'encrypt_password',
-        ), true)) {
+        ], true)) {
             throw CommonException::ERROR_PARAMETER_MISSING();
         }
 
@@ -90,20 +92,53 @@ class User extends AbstractResource
         }
 
         $registeredWay = DeviceToolkit::getMobileDeviceType($request->headers->get('user-agent'));
-        $user = array(
+        $user = [
             'mobile' => $fields['mobile'],
             'emailOrMobile' => $fields['mobile'],
             'nickname' => $nickname,
             'password' => $this->getPassword($fields['encrypt_password'], $request->getHttpRequest()->getHost()),
             'registeredWay' => $registeredWay,
+            'registerVisitId' => empty($fields['registerVisitId']) ? '' : $fields['registerVisitId'],
             'createdIp' => $request->getHttpRequest()->getClientIp(),
-        );
+        ];
+
+        if ($this->isPluginInstalled('Drp')) {
+            $user = DistributorCookieToolkit::setCookieTokenToFields($request->getHttpRequest(), $user, DistributorCookieToolkit::USER);
+        }
 
         $user = $this->getAuthService()->register($user);
         $user['token'] = $this->getUserService()->makeToken('mobile_login', $user['id'], time() + 3600 * 24 * 30);
-        $this->getLogService()->info('mobile', 'register', "用户{$user['nickname']}通过手机注册成功", array('userId' => $user['id']));
+        $this->getLogService()->info('mobile', 'register', "用户{$user['nickname']}通过手机注册成功", ['userId' => $user['id']]);
 
         return $user;
+    }
+
+    /**
+     * 更新用户信息接口,暂只更新讲师管理是否在网校显示字段,并且取消推荐
+     *
+     * @param $id
+     *
+     * @return mixed
+     */
+    public function update(ApiRequest $request, $id)
+    {
+        $user = $this->getCurrentUser();
+        if (!$user->hasPermission('admin_v2')) {
+            throw new AccessDeniedException();
+        }
+        $fields = $request->request->all();
+        $update = [];
+        if (isset($fields['showable'])) {
+            $showable = empty($fields['showable']) ? 0 : 1;
+            $updateFields = ['showable' => $showable];
+            if (!$showable) {
+                $updateFields['promoted'] = 0;
+                $updateFields['promotedSeq'] = 0;
+            }
+            $update = $this->getUserService()->updateUser($id, $updateFields);
+        }
+
+        return $update;
     }
 
     private function getPassword($password, $host)

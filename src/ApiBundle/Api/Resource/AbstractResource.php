@@ -10,7 +10,11 @@ use Codeages\Biz\Framework\Context\Biz;
 use Codeages\Biz\Framework\Event\Event;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
+use Topxia\Service\Common\ServiceKernel;
 
+/**
+ * @OA\Info(title="EduSoho接口", version="default", description="EduSoho接口，随版本动态变化")
+ */
 abstract class AbstractResource
 {
     /**
@@ -38,7 +42,7 @@ abstract class AbstractResource
         $this->biz = $biz;
     }
 
-    public function generateUrl($route, $parameters = array(), $referenceType = UrlGeneratorInterface::ABSOLUTE_PATH)
+    public function generateUrl($route, $parameters = [], $referenceType = UrlGeneratorInterface::ABSOLUTE_PATH)
     {
         return $this->container->get('router')->generate($route, $parameters, $referenceType);
     }
@@ -48,8 +52,11 @@ abstract class AbstractResource
         return $this->container->get('web.twig.extension');
     }
 
-    public function renderView($view, array $parameters = array())
+    public function renderView($view, array $parameters = [])
     {
+        //不推荐在API中使用renderView，不要继续使用
+        @trigger_error("renderView in Api is not recommended, dont't use in the future，will removed soon", E_USER_DEPRECATED);
+
         return $this->container->get('templating')->render($view, $parameters);
     }
 
@@ -94,7 +101,7 @@ abstract class AbstractResource
             $limit = static::DEFAULT_PAGING_LIMIT;
         }
 
-        return array($offset, $limit > self::MAX_PAGING_LIMIT ? self::MAX_PAGING_LIMIT : $limit);
+        return [$offset, $limit > self::MAX_PAGING_LIMIT ? self::MAX_PAGING_LIMIT : $limit];
     }
 
     protected function getSort(ApiRequest $request)
@@ -107,7 +114,7 @@ abstract class AbstractResource
         if ($sortStr) {
             $explodeSort = explode(',', $sortStr);
 
-            $sort = array();
+            $sort = [];
             foreach ($explodeSort as $part) {
                 $prefix = substr($part, 0, 1);
                 $field = str_replace(self::PREFIX_SORT_DESC, '', $part);
@@ -121,7 +128,7 @@ abstract class AbstractResource
             return $sort;
         }
 
-        return array();
+        return [];
     }
 
     protected function dispatchEvent($eventName, Event $event)
@@ -131,13 +138,13 @@ abstract class AbstractResource
 
     public function supportMethods()
     {
-        return array(
+        return [
             static::METHOD_ADD,
             static::METHOD_GET,
             static::METHOD_SEARCH,
             static::METHOD_UPDATE,
             static::METHOD_REMOVE,
-        );
+        ];
     }
 
     /**
@@ -153,9 +160,22 @@ abstract class AbstractResource
         return $this->container->get('api.plugin.config.manager')->isPluginInstalled($code);
     }
 
+    public function getPluginVersion($code)
+    {
+        $plugins = $this->container->get('kernel')->getPluginConfigurationManager()->getInstalledPlugins();
+
+        foreach ($plugins as $plugin) {
+            if (strtolower($plugin['code']) == strtolower($code)) {
+                return $plugin['version'];
+            }
+        }
+
+        return null;
+    }
+
     public function getClientIp()
     {
-        return $this->container->get('request')->getClientIp();
+        return $this->container->get('request_stack')->getMasterRequest()->getClientIp();
     }
 
     public function invokeResource(ApiRequest $apiRequest)
@@ -163,16 +183,21 @@ abstract class AbstractResource
         return $this->container->get('api_resource_kernel')->handleApiRequest($apiRequest);
     }
 
+    protected function trans($message, $arguments = [], $domain = null, $locale = null)
+    {
+        return ServiceKernel::instance()->trans($message, $arguments, $domain, $locale);
+    }
+
     protected function makePagingObject($objects, $total, $offset, $limit)
     {
-        return array(
+        return [
             'data' => $objects,
-            'paging' => array(
+            'paging' => [
                 'total' => $total,
                 'offset' => $offset,
                 'limit' => $limit,
-            ),
-        );
+            ],
+        ];
     }
 
     /**
@@ -183,5 +208,13 @@ abstract class AbstractResource
         $biz = $this->getBiz();
 
         return $biz['user'];
+    }
+
+    /**
+     * @return \Biz\S2B2C\Service\S2B2CFacadeService
+     */
+    protected function getS2B2CFacadeService()
+    {
+        return $this->getBiz()->service('S2B2C:S2B2CFacadeService');
     }
 }

@@ -4,6 +4,10 @@ namespace AppBundle\Component\Export\Course;
 
 use AppBundle\Common\ArrayToolkit;
 use AppBundle\Component\Export\Exporter;
+use Biz\Activity\Service\ActivityService;
+use Biz\Course\Service\ThreadService;
+use Biz\Visualization\Service\CoursePlanLearnDataDailyStatisticsService;
+use Codeages\Biz\ItemBank\Answer\Service\AnswerReportService;
 
 class StudentExporter extends Exporter
 {
@@ -14,7 +18,7 @@ class StudentExporter extends Exporter
             return true;
         }
 
-        $courseSetting = $this->getSettingService()->get('course', array());
+        $courseSetting = $this->getSettingService()->get('course', []);
         if (!empty($courseSetting['teacher_export_student'])) {
             $this->getCourseService()->tryManageCourse($this->parameter['courseId'], $this->parameter['courseSetId']);
 
@@ -32,12 +36,15 @@ class StudentExporter extends Exporter
     public function getTitles()
     {
         $userFields = $this->getUserFieldService()->getEnabledFieldsOrderBySeq();
-        $userFieldsTitle = empty($userFields) ? array() : ArrayToolkit::column($userFields, 'title');
-        $fields = array(
+        $userFieldsTitle = empty($userFields) ? [] : ArrayToolkit::column($userFields, 'title');
+        $fields = [
             'user.fields.username_label',
             'user.fields.email_label',
             'task.learn_data_detail.createdTime',
             'course.plan_task.study_rate',
+            'course.plan_task.put_question',
+            'student.report_card.homework',
+            'course.testpaper_manage.testpaper',
             'user.fields.truename_label',
             'user.fields.gender_label',
             'user.fileds.qq',
@@ -46,8 +53,9 @@ class StudentExporter extends Exporter
             'user.fields.company_label',
             'user.fields.career_label',
             'user.fields.title_label',
+            'course.members_manage.export.field_learn_time',
             'student.profile.weibo',
-        );
+        ];
 
         return array_merge($fields, $userFieldsTitle);
     }
@@ -56,18 +64,20 @@ class StudentExporter extends Exporter
     {
         $course = $this->getCourseService()->getCourse($this->parameter['courseId']);
         $translator = $this->container->get('translator');
-        $gender = array(
+        $gender = [
             'female' => $translator->trans('user.fields.gender.female'),
             'male' => $translator->trans('user.fields.gender.male'),
             'secret' => $translator->trans('user.fields.gender.secret'),
-        );
+        ];
 
         $courseMembers = $this->getCourseMemberService()->searchMembers(
             $this->conditions,
-            array('createdTime' => 'DESC'),
+            ['createdTime' => 'DESC'],
             $start,
             $limit
         );
+
+        $courseMembers = $this->getThreadService()->fillThreadCounts(['courseId' => $course['id'], 'type' => 'question'], $courseMembers);
 
         $studentUserIds = ArrayToolkit::column($courseMembers, 'userId');
         $users = $this->getUserService()->findUsersByIds($studentUserIds);
@@ -77,22 +87,43 @@ class StudentExporter extends Exporter
         foreach ($courseMembers as $key => $member) {
             $progress = $this->getLearningDataAnalysisService()->makeProgress($member['learnedCompulsoryTaskNum'], $course['compulsoryTaskNum']);
             $courseMembers[$key]['learningProgressPercent'] = $progress['percent'];
+            $conditions = [
+                'userId' => $member['userId'],
+                'courseIds' => [$member['courseId']],
+            ];
+            $learningTime = $this->getCoursePlanLearnDataDailyStatisticsService()->sumLearnedTimeByConditions($conditions);
+            $courseMembers[$key]['learningTime'] = round($learningTime / 60);
         }
 
         $fields = $this->getUserFieldService()->getEnabledFieldsOrderBySeq();
         $fields = ArrayToolkit::column($fields, 'fieldName');
 
-        $datas = array();
+        $homeworkCount = $this->getActivityService()->count(
+            ['mediaType' => 'homework', 'fromCourseId' => $course['id']]
+        );
+        $testpaperCount = $this->getActivityService()->count(
+            ['mediaType' => 'testpaper', 'fromCourseId' => $course['id']]
+        );
+
+        $userHomeworkCounts = $this->findUserTaskCount($course['id'], 'homework');
+        $userTestpaperCounts = $this->findUserTaskCount($course['id'], 'testpaper');
+
+        $datas = [];
         foreach ($courseMembers as $courseMember) {
-            $member = array();
+            $member = [];
             $userId = $courseMember['userId'];
             $profile = $profiles[$userId];
             $user = $users[$userId];
+            $userHomeworkCount = empty($userHomeworkCounts[$courseMember['userId']]) ? 0 : $userHomeworkCounts[$courseMember['userId']];
+            $userTestpaperCount = empty($userTestpaperCounts[$courseMember['userId']]) ? 0 : $userTestpaperCounts[$courseMember['userId']];
 
-            $member[] = $user['nickname'];
+            $member[] = is_numeric($user['nickname']) ? $user['nickname']."\t" : $user['nickname'];
             $member[] = $user['email'];
             $member[] = date('Y-n-d H:i:s', $courseMember['createdTime']);
             $member[] = $courseMember['learningProgressPercent'].'%';
+            $member[] = $courseMember['threadCount'];
+            $member[] = $userHomeworkCount.'/'.$homeworkCount."\t";
+            $member[] = $userTestpaperCount.'/'.$testpaperCount."\t";
             $member[] = $profile['truename'] ? $profile['truename'] : '-';
             $member[] = $gender[$profile['gender']];
             $member[] = $profile['qq'] ? $profile['qq'] : '-';
@@ -101,15 +132,48 @@ class StudentExporter extends Exporter
             $member[] = $profile['company'] ? $profile['company'] : '-';
             $member[] = $profile['job'] ? $profile['job'] : '-';
             $member[] = $user['title'] ? $user['title'] : '-';
+            $member[] = $courseMember['learningTime'] ?: '-';
+            $member[] = $profile['weibo'] ? $profile['weibo'] : '-';
 
             foreach ($fields as $value) {
-                $member[] = $profile[$value] ? $profile[$value] : '-';
+                $member[] = $profile[$value] ? str_replace([PHP_EOL, '"'], '', $profile[$value]) : '-';
             }
 
             $datas[] = $member;
         }
 
         return $datas;
+    }
+
+    private function findUserTaskCount($courseId, $type)
+    {
+        $activities = $this->getActivityService()->findActivitiesByCourseIdAndType($courseId, $type, true);
+
+        $userTaskCount = [];
+        foreach ($activities as $activity) {
+            if (empty($activity['ext']['answerSceneId'])) {
+                continue;
+            }
+
+            $answerReports = $this->getAnswerReportService()->search(
+                ['answer_scene_id' => $activity['ext']['answerSceneId']],
+                [],
+                0,
+                $this->getAnswerReportService()->count(['answer_scene_id' => $activity['ext']['answerSceneId']])
+            );
+
+            $answerReports = ArrayToolkit::group($answerReports, 'user_id');
+
+            foreach ($answerReports as $userId => $answerReport) {
+                if (empty($userTaskCount[$userId])) {
+                    $userTaskCount[$userId] = 0;
+                }
+
+                ++$userTaskCount[$userId];
+            }
+        }
+
+        return $userTaskCount;
     }
 
     public function buildParameter($conditions)
@@ -123,10 +187,10 @@ class StudentExporter extends Exporter
 
     public function buildCondition($conditions)
     {
-        return array(
+        return [
             'courseId' => $conditions['courseId'],
             'role' => 'student',
-        );
+        ];
     }
 
     /**
@@ -161,6 +225,30 @@ class StudentExporter extends Exporter
         return $this->getBiz()->service('Course:CourseService');
     }
 
+    /**
+     * @return ThreadService
+     */
+    protected function getThreadService()
+    {
+        return $this->getBiz()->service('Course:ThreadService');
+    }
+
+    /**
+     * @return ActivityService
+     */
+    protected function getActivityService()
+    {
+        return $this->getBiz()->service('Activity:ActivityService');
+    }
+
+    /**
+     * @return AnswerReportService
+     */
+    protected function getAnswerReportService()
+    {
+        return $this->getBiz()->service('ItemBank:Answer:AnswerReportService');
+    }
+
     protected function getCourseMemberService()
     {
         return $this->getBiz()->service('Course:MemberService');
@@ -169,5 +257,13 @@ class StudentExporter extends Exporter
     protected function getSettingService()
     {
         return $this->getBiz()->service('System:SettingService');
+    }
+
+    /**
+     * @return CoursePlanLearnDataDailyStatisticsService
+     */
+    protected function getCoursePlanLearnDataDailyStatisticsService()
+    {
+        return $this->getBiz()->service('Visualization:CoursePlanLearnDataDailyStatisticsService');
     }
 }

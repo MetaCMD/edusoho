@@ -14,11 +14,11 @@ interface QuestionMarkerService
 
     public function findQuestionMarkersByMarkerIds($markerIds);
 
-    public function findQuestionMarkersMetaByMediaId($mediaId);
+    public function findQuestionMarkersMetaByActivityId($activityId);
 
     public function findQuestionMarkersByQuestionId($questionId);
 
-    public function addQuestionMarker($questionId, $markerId, $seq);
+    public function addQuestionMarker($itemId, $markerId, $seq);
 
     public function updateQuestionMarker($id, $fields);
 

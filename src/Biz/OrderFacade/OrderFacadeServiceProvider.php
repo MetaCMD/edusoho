@@ -4,20 +4,21 @@ namespace Biz\OrderFacade;
 
 use Biz\OrderFacade\Command\Deduct\AvailableCouponCommand;
 use Biz\OrderFacade\Command\Deduct\AvailableDeductWrapper;
+use Biz\OrderFacade\Command\Deduct\AvailablePaidCoursesCommand;
 use Biz\OrderFacade\Command\Deduct\PickCouponCommand;
 use Biz\OrderFacade\Command\Deduct\PickedDeductWrapper;
+use Biz\OrderFacade\Command\Deduct\PickPaidCoursesCommand;
 use Biz\OrderFacade\Command\OrderPayCheck\CoinCheckCommand;
 use Biz\OrderFacade\Command\OrderPayCheck\CouponCheckCommand;
 use Biz\OrderFacade\Command\OrderPayCheck\OrderPayChecker;
 use Biz\OrderFacade\Deduct\CouponDeduct;
 use Biz\OrderFacade\Product\ClassroomProduct;
 use Biz\OrderFacade\Product\CourseProduct;
+use Biz\OrderFacade\Product\ItemBankExerciseProduct;
 use Biz\System\Service\SettingService;
 use Codeages\Biz\Framework\Context\Biz;
 use Pimple\Container;
 use Pimple\ServiceProviderInterface;
-use Biz\OrderFacade\Command\Deduct\AvailablePaidCoursesCommand;
-use Biz\OrderFacade\Command\Deduct\PickPaidCoursesCommand;
 
 class OrderFacadeServiceProvider implements ServiceProviderInterface
 {
@@ -32,6 +33,8 @@ class OrderFacadeServiceProvider implements ServiceProviderInterface
         $this->registerCurrency($biz);
 
         $this->registerPayments($biz);
+
+        $this->registerIapOptions($biz);
     }
 
     private function registerProduct(Container $biz)
@@ -45,6 +48,13 @@ class OrderFacadeServiceProvider implements ServiceProviderInterface
 
         $biz[sprintf('order.product.%s', ClassroomProduct::TYPE)] = $biz->factory(function ($biz) {
             $product = new ClassroomProduct();
+            $product->setBiz($biz);
+
+            return $product;
+        });
+
+        $biz[sprintf('order.product.%s', ItemBankExerciseProduct::TYPE)] = $biz->factory(function ($biz) {
+            $product = new ItemBankExerciseProduct();
             $product->setBiz($biz);
 
             return $product;
@@ -100,47 +110,47 @@ class OrderFacadeServiceProvider implements ServiceProviderInterface
             /** @var $settingService SettingService */
             /** @var $biz Biz */
             $settingService = $biz->service('System:SettingService');
-            $paymentSetting = $settingService->get('payment', array());
+            $paymentSetting = $settingService->get('payment', []);
 
-            $enabledPayments = array();
+            $enabledPayments = [];
 
             if (isset($paymentSetting['alipay_enabled']) && $paymentSetting['alipay_enabled']) {
-                $enabledPayments['alipay'] = array(
+                $enabledPayments['alipay'] = [
                     'seller_email' => $paymentSetting['alipay_account'],
                     'partner' => $paymentSetting['alipay_key'],
                     'key' => $paymentSetting['alipay_secret'],
-                );
+                ];
             }
 
             if (isset($paymentSetting['wxpay_enabled']) && $paymentSetting['wxpay_enabled']) {
-                $enabledPayments['wechat'] = array(
+                $enabledPayments['wechat'] = [
                     'appid' => $paymentSetting['wxpay_appid'],
                     'mch_id' => $paymentSetting['wxpay_account'],
                     'key' => $paymentSetting['wxpay_key'],
                     'secret' => $paymentSetting['wxpay_secret'],
                     'cert_path' => '',
                     'key_path' => '',
-                );
+                ];
             }
 
             if (isset($paymentSetting['llpay_enabled']) && $paymentSetting['llpay_enabled']) {
-                $enabledPayments['lianlianpay'] = array(
+                $enabledPayments['lianlianpay'] = [
                     'oid_partner' => $paymentSetting['llpay_key'],
                     'accessKey' => $paymentSetting['llpay_accessKey'],
                     'secret' => $paymentSetting['llpay_secretKey'],
-                );
+                ];
             }
 
-            $wechatAppSetting = $settingService->get('wechat_app', array());
+            $wechatAppSetting = $settingService->get('wechat_app', []);
             if (isset($wechatAppSetting['enabled']) && $wechatAppSetting['enabled']) {
-                $enabledPayments['wechat_app'] = array(
+                $enabledPayments['wechat_app'] = [
                     'appid' => $wechatAppSetting['appid'],
                     'mch_id' => $wechatAppSetting['account'],
                     'key' => $wechatAppSetting['key'],
                     'secret' => $wechatAppSetting['secret'],
                     'cert_path' => '',
                     'key_path' => '',
-                );
+                ];
             }
 
             return $enabledPayments;
@@ -149,18 +159,18 @@ class OrderFacadeServiceProvider implements ServiceProviderInterface
         $biz['payment.options'] = function ($biz) {
             $setting = $biz->service('System:SettingService')->get('coin');
 
-            $site = $biz->service('System:SettingService')->get('site', array());
+            $site = $biz->service('System:SettingService')->get('site', []);
 
-            return array(
+            return [
                 'closed_by_notify' => true,
                 'coin_rate' => empty($setting['coin_enabled']) ? 1 : $setting['cash_rate'],
                 'goods_title' => empty($site['name']) ? 'EduSoho订单' : $site['name'].'订单',
-            );
+            ];
         };
 
-        $biz['order.options'] = array(
+        $biz['order.options'] = [
             'closed_expired_time' => 2 * 24 * 60 * 60,
-        );
+        ];
     }
 
     private function registerCurrency(Container $biz)
@@ -169,6 +179,18 @@ class OrderFacadeServiceProvider implements ServiceProviderInterface
             $currency = new Currency($biz);
 
             return $currency;
+        };
+    }
+
+    private function registerIapOptions(Container $biz)
+    {
+        $biz['iap.options'] = function ($biz) {
+            $mobileSetting = $biz->service('System:SettingService')->get('mobile', []);
+
+            return [
+                'bundleId' => $mobileSetting['bundleId'],
+                'product' => $biz->service('System:SettingService')->get('mobile_iap_product', []),
+            ];
         };
     }
 }

@@ -5,6 +5,8 @@ namespace ApiBundle\Api\Resource;
 use ApiBundle\Api\Util\AssetHelper;
 use AppBundle\Common\ArrayToolkit;
 use AppBundle\Util\CdnUrl;
+use Codeages\PluginBundle\System\PluginConfigurationManager;
+use Topxia\Service\Common\ServiceKernel;
 
 abstract class Filter
 {
@@ -32,14 +34,14 @@ abstract class Filter
 
     public function filter(&$data)
     {
-        if (!$data) {
+        if (!$data || !is_array($data)) {
             return null;
         }
 
         $this->defaultTimeFilter($data);
 
-        $filteredData = array();
-        foreach (array(self::SIMPLE_MODE, self::PUBLIC_MODE, self::AUTHENTICATED_MODE) as $mode) {
+        $filteredData = [];
+        foreach ([self::SIMPLE_MODE, self::PUBLIC_MODE, self::AUTHENTICATED_MODE] as $mode) {
             $property = $mode.'Fields';
             if (property_exists($this, $property) && $this->{$property}) {
                 $partData = ArrayToolkit::parts($data, $this->$property);
@@ -61,7 +63,7 @@ abstract class Filter
 
     public function filters(&$dataSet)
     {
-        if (!$dataSet) {
+        if (!$dataSet || !is_array($dataSet)) {
             return;
         }
 
@@ -90,6 +92,11 @@ abstract class Filter
     protected function convertAbsoluteUrl($html)
     {
         $html = preg_replace_callback('/src=[\'\"]\/(.*?)[\'\"]/', function ($matches) {
+            // 因为众多路径放进了带有域名的URL，所以包含`//`的url一律按照不做处理
+            if (0 === strpos($matches[1], '/')) {
+                return "src=\"\/{$matches[1]}\"";
+            }
+
             $cdn = new CdnUrl();
             $cdnUrl = $cdn->get('content');
             if (!empty($cdnUrl)) {
@@ -115,5 +122,12 @@ abstract class Filter
         }
 
         return $url;
+    }
+
+    protected function isPluginInstalled($pluginName)
+    {
+        $pluginManager = new PluginConfigurationManager(ServiceKernel::instance()->getParameter('kernel.root_dir'));
+
+        return $pluginManager->isPluginInstalled($pluginName);
     }
 }

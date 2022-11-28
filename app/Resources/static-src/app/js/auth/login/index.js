@@ -1,6 +1,10 @@
 import Face from './face';
+import Drag from 'app/common/drag';
 
 let $form = $('#login-form');
+let drag = $('#drag-btn').length ? new Drag($('#drag-btn'), $('.js-jigsaw'), {
+  limitType: 'user_login'
+}) : null;
 let validator = $form.validate({
   rules: {
     _username: {
@@ -8,7 +12,21 @@ let validator = $form.validate({
     },
     _password: {
       required: true,
+    },
+    dragCaptchaToken: {
+      required: true,
     }
+  },
+  messages: {
+    dragCaptchaToken: {
+      required: Translator.trans('auth.register.drag_captcha_tips')
+    },
+    _username: {
+      required: Translator.trans('auth.register.name_required_error_hint')
+    },
+    _password: {
+      required: Translator.trans('auth.register.password_required_error_hint')
+    },
   }
 });
 $('#login-form').keypress(function (e) {

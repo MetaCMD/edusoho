@@ -2,15 +2,15 @@
 
 namespace AppBundle\Controller;
 
-use AppBundle\Common\Paginator;
-use Biz\User\Service\UserService;
 use AppBundle\Common\ArrayToolkit;
+use AppBundle\Common\Paginator;
+use AppBundle\Component\MediaParser\ParserProxy;
 use Biz\Course\Service\CourseService;
 use Biz\Course\Service\MaterialService;
 use Biz\File\Service\UploadFileService;
+use Biz\User\Service\UserService;
 use Biz\User\UserException;
 use Symfony\Component\HttpFoundation\Request;
-use AppBundle\Component\MediaParser\ParserProxy;
 
 /**
  * Class MediaProccessController
@@ -34,7 +34,7 @@ class FileChooserController extends BaseController
         );
         $files = $this->getUploadFileService()->searchFiles(
             $conditions,
-            array('createdTime' => 'DESC'),
+            ['createdTime' => 'DESC'],
             $paginator->getOffsetCount(),
             $paginator->getPerPageCount()
         );
@@ -44,11 +44,13 @@ class FileChooserController extends BaseController
 
         return $this->render(
             'file-chooser/widget/choose-table.html.twig',
-            array(
+            [
                 'files' => $files,
+                'batch' => $request->query->get('batch', 0),
+                'mediaType' => $request->query->get('activityType', ''),
                 'createdUsers' => $createdUsers,
                 'paginator' => $paginator,
-            )
+            ]
         );
     }
 
@@ -76,10 +78,17 @@ class FileChooserController extends BaseController
         $query = $request->query->all();
         $courseMaterials = $this->findCourseMaterials($request, $courseId);
 
-        $conditions = array();
+        $conditions = [];
         $conditions['page'] = $request->query->get('page', 1);
-        $conditions['ids'] = $courseMaterials ? ArrayToolkit::column($courseMaterials, 'fileId') : array(-1);
-        $conditions['type'] = (empty($query['type']) || $query['type'] == 'all') ? null : $query['type'];
+        $conditions['ids'] = $courseMaterials ? ArrayToolkit::column($courseMaterials, 'fileId') : [-1];
+
+        $batchCreate = $request->query->get('batch', 0);
+        if ($batchCreate) {
+            //计划批量添加课时只支持以下文件类型
+            $conditions['types'] = ['document', 'video', 'audio', 'ppt', 'flash'];
+        } else {
+            $conditions['type'] = (empty($query['type']) || 'all' == $query['type']) ? null : $query['type'];
+        }
         $conditions['filenameLike'] = empty($query['keyword']) ? null : $query['keyword'];
 
         $paginator = new Paginator(
@@ -90,7 +99,7 @@ class FileChooserController extends BaseController
 
         $files = $this->getUploadFileService()->searchFiles(
             $conditions,
-            array('createdTime' => 'DESC'),
+            ['createdTime' => 'DESC'],
             $paginator->getOffsetCount(),
             $paginator->getPerPageCount()
         );
@@ -100,11 +109,12 @@ class FileChooserController extends BaseController
 
         return $this->render(
             'file-chooser/widget/choose-table.html.twig',
-            array(
+            [
                 'files' => $files,
+                'batch' => $batchCreate,
                 'createdUsers' => $createdUsers,
                 'paginator' => $paginator,
-            )
+            ]
         );
     }
 
@@ -128,7 +138,17 @@ class FileChooserController extends BaseController
             $conditions['filename'] = $conditions['keyword'];
             unset($conditions['keyword']);
         }
-        $conditions['type'] = (empty($conditions['type']) || ($conditions['type'] == 'all')) ? null : $conditions['type'];
+
+        if (isset($conditions['tagId']) && empty($conditions['tagId'])) {
+            unset($conditions['tagId']);
+        }
+
+        if (!empty($conditions['batch'])) {
+            $conditions['types'] = ['document', 'video', 'audio', 'ppt', 'flash'];
+        } else {
+            $conditions['type'] = (empty($conditions['type']) || ('all' == $conditions['type'])) ? null : $conditions['type'];
+        }
+        unset($conditions['mediaType']);
 
         return $conditions;
     }
@@ -137,8 +157,8 @@ class FileChooserController extends BaseController
     {
         $courseType = $request->query->get('courseType', 'course');
 
-        $conditions = array('type' => $courseType);
-        if ($courseType == 'openCourse') {
+        $conditions = ['type' => $courseType];
+        if ('openCourse' == $courseType) {
             $conditions['courseId'] = $courseId;
         } else {
             $course = $this->getCourseService()->getCourse($courseId);
@@ -148,7 +168,7 @@ class FileChooserController extends BaseController
         //FIXME 同一个courseId下文件可能存在重复，所以需考虑去重，但没法直接根据groupbyFileId去重（sql_mode）
         $courseMaterials = $this->getMaterialService()->searchMaterials(
             $conditions,
-            array('createdTime' => 'DESC'),
+            ['createdTime' => 'DESC'],
             0,
             PHP_INT_MAX
         );

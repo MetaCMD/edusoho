@@ -34,6 +34,8 @@ class UserSettingController extends BaseController
             'welcome_body' => '',
             'user_terms' => 'closed',
             'user_terms_body' => '',
+            'privacy_policy' => 'closed',
+            'privacy_policy_body' => '',
             'captcha_enabled' => 0,
             'register_protective' => 'none',
             'nickname_enabled' => 0,
@@ -47,6 +49,9 @@ class UserSettingController extends BaseController
         }
 
         $auth = array_merge($default, $auth);
+
+        //完成新人助手
+        $this->doneNewcomerTask();
 
         if ('POST' == $request->getMethod()) {
             $defaultSetting = $request->request->all();
@@ -100,6 +105,17 @@ class UserSettingController extends BaseController
         ));
     }
 
+    protected function doneNewcomerTask()
+    {
+        $biz = $this->getBiz();
+        $authSettingTask = $biz['newcomer.auth_setting_task'];
+        $isTaskDone = $authSettingTask->getStatus();
+
+        if (!$isTaskDone) {
+            $authSettingTask->doneTask('auth_setting_task');
+        }
+    }
+
     public function userAvatarAction(Request $request)
     {
         $defaultSetting = $this->getSettingService()->get('default', array());
@@ -133,9 +149,11 @@ class UserSettingController extends BaseController
         if ($request->isMethod('POST')) {
             $loginConnect = $request->request->all();
             $loginConnect = ArrayToolkit::trim($loginConnect);
+            $formerLoginConnect = $this->getSettingService()->get('login_bind');
+            $loginConnect = array_merge($formerLoginConnect, $loginConnect);
             $loginConnect = $this->decideEnabledLoginConnect($loginConnect);
+
             $this->getSettingService()->set('login_bind', $loginConnect);
-            $this->updateWeixinMpFile($loginConnect['weixinmob_mp_secret']);
         }
 
         return $this->render('admin/system/login-connect.html.twig', array(

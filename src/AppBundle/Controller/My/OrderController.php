@@ -2,30 +2,32 @@
 
 namespace AppBundle\Controller\My;
 
+use AppBundle\Common\ArrayToolkit;
+use AppBundle\Common\Paginator;
+use AppBundle\Controller\BaseController;
+use Biz\Classroom\Service\ClassroomService;
+use Biz\Course\Service\CourseSetService;
+use Biz\Goods\Service\GoodsService;
 use Biz\Order\OrderException;
 use Codeages\Biz\Order\Service\OrderRefundService;
-use Biz\OrderFacade\Service\OrderRefundService as LocalOrderRefundService;
 use Codeages\Biz\Order\Service\OrderService;
 use Codeages\Biz\Order\Service\WorkflowService;
 use Codeages\Biz\Pay\Service\PayService;
 use Symfony\Component\HttpFoundation\Request;
-use AppBundle\Common\Paginator;
-use AppBundle\Common\ArrayToolkit;
-use AppBundle\Controller\BaseController;
 
 class OrderController extends BaseController
 {
     protected function getTimeRange($fields)
     {
-        if (isset($fields['startTime']) && isset($fields['endTime']) && $fields['startTime'] != '' && $fields['endTime'] != '') {
+        if (isset($fields['startTime']) && isset($fields['endTime']) && '' != $fields['startTime'] && '' != $fields['endTime']) {
             if ($fields['startTime'] > $fields['endTime']) {
                 return false;
             }
 
-            return array('startTime' => strtotime($fields['startTime']), 'endTime' => (strtotime($fields['endTime']) + 24 * 3600));
+            return ['startTime' => strtotime($fields['startTime']), 'endTime' => (strtotime($fields['endTime']) + 24 * 3600)];
         }
 
-        return array('startTime' => strtotime(date('Y-m', time())), 'endTime' => strtotime(date('Y-m-d', time() + 24 * 3600)));
+        return ['startTime' => strtotime(date('Y-m', time())), 'endTime' => strtotime(date('Y-m-d', time() + 24 * 3600))];
     }
 
     public function indexAction(Request $request)
@@ -35,9 +37,9 @@ class OrderController extends BaseController
         $keyWord = $request->get('q');
         $payWays = $request->get('payWays');
 
-        $conditions = array(
+        $conditions = [
             'user_id' => $user['id'],
-        );
+        ];
         if (!empty($status)) {
             $conditions['display_status'] = $status;
         }
@@ -58,7 +60,7 @@ class OrderController extends BaseController
 
         $orders = $this->getOrderService()->searchOrders(
             $conditions,
-            array('created_time' => 'DESC'),
+            ['created_time' => 'DESC'],
             $paginator->getOffsetCount(),
             $paginator->getPerPageCount()
         );
@@ -74,17 +76,21 @@ class OrderController extends BaseController
         $orderRefunds = $this->getOrderRefundService()->findRefundsByOrderIds($orderIds);
         $orderRefunds = ArrayToolkit::index($orderRefunds, 'order_id');
 
+        $goodsSpecs = $this->getGoodsService()->findGoodsSpecsByIds(ArrayToolkit::column($orderItems, 'target_id'));
+        $goodsSpecs = ArrayToolkit::index($goodsSpecs, 'id');
         foreach ($orders as &$order) {
-            $order['item'] = empty($orderItems[$order['id']]) ? array() : $orderItems[$order['id']];
-            $order['trade'] = empty($paymentTrades[$order['sn']]) ? array() : $paymentTrades[$order['sn']];
-            $order['refund'] = empty($orderRefunds[$order['id']]) ? array() : $orderRefunds[$order['id']];
+            $order['item'] = empty($orderItems[$order['id']]) ? [] : $orderItems[$order['id']];
+            $order['trade'] = empty($paymentTrades[$order['sn']]) ? [] : $paymentTrades[$order['sn']];
+            $order['refund'] = empty($orderRefunds[$order['id']]) ? [] : $orderRefunds[$order['id']];
+            $order['goodsId'] = empty($goodsSpecs[$order['item']['target_id']]) ? '' : $goodsSpecs[$order['item']['target_id']]['goodsId'];
+            $order['targetId'] = empty($goodsSpecs[$order['item']['target_id']]) ? '' : $goodsSpecs[$order['item']['target_id']]['targetId'];
         }
 
-        return $this->render('my-order/order/index.html.twig', array(
+        return $this->render('my-order/order/index.html.twig', [
             'orders' => $orders,
             'paginator' => $paginator,
             'request' => $request,
-        ));
+        ]);
     }
 
     public function detailAction(Request $request, $id)
@@ -103,7 +109,7 @@ class OrderController extends BaseController
 
         $users = $this->getUserService()->findUsersByIds(ArrayToolkit::column($orderLogs, 'user_id'));
 
-        return $this->render('my-order/detail-modal.html.twig', array(
+        return $this->render('my-order/detail-modal.html.twig', [
             'order' => $order,
             'user' => $user,
             'orderItems' => $orderItems,
@@ -111,13 +117,13 @@ class OrderController extends BaseController
             'orderLogs' => $orderLogs,
             'orderDeducts' => $orderDeducts,
             'users' => $users,
-        ));
+        ]);
     }
 
     public function cancelAction(Request $request, $id)
     {
         $this->tryManageOrder($id);
-        $order = $this->getWorkflowService()->close($id, array('type' => 'manual'));
+        $order = $this->getWorkflowService()->close($id, ['type' => 'manual']);
 
         return $this->createJsonResponse(true);
     }
@@ -167,10 +173,26 @@ class OrderController extends BaseController
     }
 
     /**
-     * @return LocalOrderRefundService
+     * @return CourseSetService
      */
-    protected function getLocalOrderRefundService()
+    protected function getCourseSetService()
     {
-        return $this->createService('OrderFacade:OrderRefundService');
+        return $this->createService('Course:CourseSetService');
+    }
+
+    /**
+     * @return ClassroomService
+     */
+    protected function getClassroomService()
+    {
+        return $this->createService('Classroom:ClassroomService');
+    }
+
+    /**
+     * @return GoodsService
+     */
+    protected function getGoodsService()
+    {
+        return $this->createService('Goods:GoodsService');
     }
 }

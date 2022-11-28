@@ -89,6 +89,7 @@ export default class QuestionOperate {
     $tbody.find('[data-parent-id="'+id+'"]').remove();
     $target.closest('tr').remove();
     questionSubjectiveRemask(this.$form);
+    $tbody.trigger('lengthChange');
     this.refreshSeqs();
   }
 
@@ -115,6 +116,7 @@ export default class QuestionOperate {
       $(this).closest('tr').remove();
       
     });
+    this.refreshSeqs();
     questionSubjectiveRemask(this.$form);
   }
 

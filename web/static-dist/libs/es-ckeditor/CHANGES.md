@@ -1,3 +1,50 @@
+# es-ckeditor 4.7.2-patch19 (2021-06-17)
+
+* 修复上传图片名称过长不能点击上传按钮问题
+
+# es-ckeditor 4.7.2-patch18 (2021-04-20)
+
+* 解决 ckeditor 无法复制粘贴 word 中图片的问题
+
+# es-ckeditor 4.7.2-patch17 (2021-04-16)
+
+* 修复上传图片显示多个上传窗口问题
+
+# es-ckeditor 4.7.2-patch16 (2020-12-31)
+
+* 移除 flash 文件上传功能
+
+# es-ckeditor 4.7.2-patch15 (2020-09-16)
+
+* 兼容IE不能上传图片问题
+* 兼容IE不能使用公式编辑器问题
+
+# es-ckeditor 4.7.2-patch14 (2020-06-11)
+
+* 解决图片上传跨域问题
+* 适配item-bank中调用 es-ckeditor 图片上传
+
+# es-ckeditor 4.7.2-patch13 (2020-05-12)
+
+* 解决公式编辑器跨域问题
+* 适配item-bank中调用 es-ckeditor 公式编辑器
+
+# es-ckeditor 4.7.2-patch12 (2019-05-23)
+
+* 4.7.2-patch12版本号占用，不可用
+
+# es-ckeditor 4.7.2-patch11 (2019-02-21)
+
+* 修复图片粘贴或者拖拽时变形的问题
+
+# es-ckeditor 4.7.2-patch9 (2019-02-13)
+
+* 修改黏贴图片上传图片的策略 pasteimage
+
+# es-ckeditor 4.7.2-patch8 (2019-01-29)
+
+* 增加图片通过拖拽或者粘贴板粘贴的功能 pasteimage
+
 # es-ckeditor 4.7.2-patch7 (2018-10-30)
 
 * 将表情图片通过相对路径加载

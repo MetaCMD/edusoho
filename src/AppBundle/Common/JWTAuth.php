@@ -47,7 +47,7 @@ class JWTAuth
 
         list($header64, $payload64, $sign) = $jwtArray;
 
-        $header = json_decode(self::urlSafeBase64Decode($header64), JSON_OBJECT_AS_ARRAY);
+        $header = json_decode(self::urlSafeBase64Decode($header64), true);
         if (empty($header['alg'])) {
             return false;
         }
@@ -58,7 +58,7 @@ class JWTAuth
             return false;
         }
 
-        $payload = json_decode(self::urlSafeBase64Decode($payload64), JSON_OBJECT_AS_ARRAY);
+        $payload = json_decode(self::urlSafeBase64Decode($payload64), true);
         $currentTime = time();
         if (isset($payload['iat']) && $payload['iat'] > $currentTime) {
             return false;
@@ -100,9 +100,8 @@ class JWTAuth
     public static function urlSafeBase64Encode($originString)
     {
         $data = base64_encode($originString);
-        $data = str_replace(array('+', '/', '='), array('-', '_', ''), $data);
 
-        return $data;
+        return str_replace(array('+', '/', '='), array('-', '_', ''), $data);
     }
 
     protected function makePayload(array $payload)

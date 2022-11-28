@@ -2,6 +2,8 @@ import swfobject from 'es-swfobject';
 import EsMessenger from 'app/common/messenger';
 import { getSupportedPlayer } from 'common/video-player-judge';
 import ActivityEmitter from 'app/js/activity/activity-emitter';
+import LocalVideoPlayer from 'app/js/player/local-video-player';
+import 'store';
 
 export default class VideoPlay {
   constructor(recorder) {
@@ -12,7 +14,11 @@ export default class VideoPlay {
   }
 
   play() {
-    if ($('#swf-player').length) {
+    this['activity_id_' + this.recorder.activityId + '_finish'] = false;
+
+    if ($('#local-video-player').length) {
+      this._playerLocalVideo();
+    }else if ($('#swf-player').length) {
       this.flashTip();
       this._playerSwf();
     } else {
@@ -25,6 +31,13 @@ export default class VideoPlay {
     this.record();
   }
 
+  _playerLocalVideo() {
+    $('#lesson-video-content').html('<video id="lesson-player" style="width: 100%;height: 100%;" class="video-js vjs-default-skin" controls preload="auto"></video>');
+    new LocalVideoPlayer({
+      'element' : 'lesson-player',
+      'url' : $('#lesson-video-content').data('url'),
+    });
+  }
 
   flashTip(flag) {
     if (!swfobject.hasFlashPlayerVersion('11')) {
@@ -85,13 +98,37 @@ export default class VideoPlay {
     });
 
     messenger.on('timechange', (msg) => {
+      if (this['activity_id_' + this.recorder.activityId + '_finish'] && this.player.playing){
+        this._onRestartLearnTask(msg);
+      }
       this.player.currentTime = msg.currentTime;
     });
+
+    const $taskContentIframe = $('#task-content-iframe', window.parent.document);
+
+    messenger.on('requestFullscreen', (msg) => {
+      if (msg.isFullscreen) {
+        $taskContentIframe.addClass('fullscreen');
+      } else {
+        $taskContentIframe.removeClass('fullscreen');
+      }
+    })
   }
 
   _onFinishLearnTask(msg) {
+    this['activity_id_' + this.recorder.activityId + '_finish'] = true;
     this.emitter.emit('finish', { data: msg }).then(() => {
       clearInterval(this.intervalId);
+      store.set('activity_id_' + this.recorder.activityId + '_playing_counter', 0);
+    }).catch((error) => {
+      console.error(error);
+    });
+  }
+
+  _onRestartLearnTask(msg) {
+    this['activity_id_' + this.recorder.activityId + '_finish'] = false;
+    this.record();
+    this.emitter.emit('restart', true).then(() => {
     }).catch((error) => {
       console.error(error);
     });

@@ -1,9 +1,13 @@
 import 'app/common/widget/qrcode';
+import { isMobileDevice } from 'common/utils';
+import Api from 'common/api';
+import 'store';
+
+const WECHAT_SUBSCRIBE_INTRO = 'WECHAT_SUBSCRIBE_INTRO';
 
 let $unfavorite = $('.js-unfavorite-btn');
 let $favorite = $('.js-favorite-btn');
-bindOperation($unfavorite, $favorite);
-bindOperation($favorite, $unfavorite);
+let $loginModal = $('#login-modal');
 discountCountdown();
 ancelRefund();
 
@@ -15,22 +19,6 @@ function ancelRefund() {
     $.post($(this).data('url'), function (data) {
       window.location.reload();
     });
-  });
-}
-
-function bindOperation($needHideBtn, $needShowBtn) {
-  $needHideBtn.click(() => {
-    const url = $needHideBtn.data('url');
-    console.log(url);
-    if (!url) {
-      return;
-    }
-    $.post(url)
-      .done((success) => {
-        if (!success) return;
-        $needShowBtn.removeClass('hidden');
-        $needHideBtn.addClass('hidden');
-      });
   });
 }
 
@@ -51,11 +39,39 @@ function discountCountdown() {
   }
 }
 
+if ($favorite.length) {
+  $favorite.on('click', function () {
+    Api.favorite.favorite({
+      data: {
+        'targetType': $(this).data('targetType'),
+        'targetId': $(this).data('targetId'),
+      }
+    }).then((res) => {
+      $unfavorite.removeClass('hidden');
+      $favorite.addClass('hidden');
+    });
+  });
+}
+
+if ($unfavorite.length) {
+  $unfavorite.on('click', function () {
+    Api.favorite.unfavorite({
+      data: {
+        'targetType': $(this).data('targetType'),
+        'targetId': $(this).data('targetId'),
+      }
+    }).then((res) => {
+      $favorite.removeClass('hidden');
+      $unfavorite.addClass('hidden');
+    });
+  });
+}
+
 const fixButtonPosition = () => {
   const $target = $('.js-course-detail-info');
   const height = $target.height();
   const $btn = $('.js-course-header-operation');
-  if (height >  240) {
+  if (height > 240) {
     $btn.removeClass('course-detail-info__btn');
   }
 };
@@ -63,3 +79,24 @@ const fixButtonPosition = () => {
 $(document).ready(() => {
   fixButtonPosition();
 });
+
+const wechatIntro = () => {
+  introJs().setOptions({
+    steps: [{
+      element: '.js-es-course-qrcode',
+      intro: Translator.trans('course.intro.wechat_subscribe'),
+    }],
+    doneLabel: '确认',
+    showBullets: false,
+    showStepNumbers: false,
+    exitOnEsc: false,
+    exitOnOverlayClick: false,
+    tooltipClass: 'es-course-qrcode-intro',
+  }).start();
+}
+
+var $notificationEnable = $('#wechat_notification_type').val();
+if ($notificationEnable == 'messageSubscribe' && !store.get(WECHAT_SUBSCRIBE_INTRO) && !isMobileDevice()) {
+  store.set(WECHAT_SUBSCRIBE_INTRO, true);
+  wechatIntro();
+}

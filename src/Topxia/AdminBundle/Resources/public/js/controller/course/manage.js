@@ -73,6 +73,26 @@ define(function (require, exports, module) {
         } else {
           $('#modal').modal('show').html(data);
         }
+      }).error(function(e) {
+        var res = e.responseJSON.error.message;
+        Notify.danger(res);
+      });
+    });
+
+    $table.on('click', '.remove-course', function() {
+      var $this = $(this);
+      if (!confirm(Translator.trans('admin.course.remove_hint')))
+        return;
+      var $tr = $this.parents('tr');
+      $.post($this.data('url'), function(data) {
+        if (data.code > 0) {
+          Notify.danger(data.message);
+        } else if (data.code == 0) {
+          $tr.remove();
+          Notify.success(data.message);
+        } else {
+          $('#modal').modal('show').html(data);
+        }
       });
     });
 

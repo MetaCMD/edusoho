@@ -28,6 +28,7 @@ use Codeages\Biz\Order\Service\OrderService;
 use Codeages\Biz\Pay\Service\AccountService;
 use Symfony\Component\HttpFoundation\Request;
 use Topxia\MobileBundleV2\Controller\MobileBaseController;
+use Biz\System\Service\H5SettingService;
 
 class BaseProcessor
 {
@@ -79,7 +80,7 @@ class BaseProcessor
         return array_map(function ($user) use ($container) {
             foreach ($user as $key => $value) {
                 if (!in_array($key, array(
-                    'id', 'email', 'smallAvatar', 'mediumAvatar', 'largeAvatar', 'nickname', 'roles', 'locked', 'about', 'title', ))
+                    'id', 'email', 'smallAvatar', 'mediumAvatar', 'largeAvatar', 'nickname', 'roles', 'locked', 'about', 'title', 'destroyed', ))
                 ) {
                     unset($user[$key]);
                 }
@@ -88,6 +89,7 @@ class BaseProcessor
             $user['smallAvatar'] = $container->get('web.twig.extension')->getFurl($user['smallAvatar'], 'avatar.png');
             $user['mediumAvatar'] = $container->get('web.twig.extension')->getFurl($user['mediumAvatar'], 'avatar.png');
             $user['largeAvatar'] = $container->get('web.twig.extension')->getFurl($user['largeAvatar'], 'avatar-large.png');
+            $user['nickname'] = ($user['destroyed'] == 1) ? '帐号已注销' : $user['nickname'];
 
             return $user;
         }, $users);
@@ -357,6 +359,14 @@ class BaseProcessor
         return $this->controller->getService('User:UserFieldService');
     }
 
+    /**
+     * @return H5SettingService
+     */
+    protected function getH5SettingService()
+    {
+        return $this->controller->getService('System:H5SettingService');
+    }
+
     public function createErrorResponse($name, $message)
     {
         $error = array(
@@ -427,6 +437,7 @@ class BaseProcessor
             'host' => $request->getSchemeAndHttpHost(),
             'logo' => $logo,
             'splashs' => $splashs,
+            'appDiscoveryVersion' => $this->getH5SettingService()->getAppDiscoveryVersion(),
             'apiVersionRange' => array(
                 'min' => '1.0.0',
                 'max' => self::API_VERSIN_RANGE,

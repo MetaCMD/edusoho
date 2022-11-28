@@ -9,6 +9,8 @@ interface UserService
 {
     public function getUser($id, $lock = false);
 
+    public function updateUser($id, array $fields);
+
     public function getUserAndProfile($id);
 
     public function initSystemUsers();
@@ -17,6 +19,10 @@ interface UserService
 
     public function getUserByNickname($nickname);
 
+    public function getUnDstroyedUserByNickname($nickname);
+
+    public function getUnDstroyedUserByNickNameOrVerifiedMobile($value);
+
     public function getUserByType($type);
 
     public function getUserByUUID($uuid);
@@ -24,7 +30,7 @@ interface UserService
     public function updateUserUpdatedTime($id);
 
     //根据用户名/邮箱/手机号精确查找用户
-    public function getUserByLoginField($keyword);
+    public function getUserByLoginField($keyword, $isFilterDestroyed = false);
 
     public function getUserByVerifiedMobile($mobile);
 
@@ -34,15 +40,19 @@ interface UserService
 
     public function findUsersHasMobile($start, $limit, $isVerified = false);
 
-    public function findUnlockedUserMobilesByUserIds($userIds, $needVerified = false);
+    public function findUnlockedUserMobilesByUserIds($userIds);
 
     public function getUserByEmail($email);
 
+    public function getUserByScrmUuid($scrmUuid);
+
     public function findUsersByIds(array $id);
+
+    public function findUnDestroyedUsersByIds($ids);
 
     public function findUserProfilesByIds(array $ids);
 
-    public function searchUsers(array $conditions, array $orderBy, $start, $limit, $columns = array());
+    public function searchUsers(array $conditions, array $orderBy, $start, $limit, $columns = []);
 
     public function countUsers(array $conditions);
 
@@ -84,6 +94,12 @@ interface UserService
      * @Log(module="user",action="avatar-changed",funcName="getUser",param="userId")
      */
     public function changeAvatar($userId, $data);
+
+    public function changeAssistantQrCode($userId, $data);
+
+    public function setUserScrmUuid($userId, $scrmUuid);
+
+    public function setUserScrmStaffId($userId, $scrmStaffId);
 
     public function isNicknameAvaliable($nickname);
 
@@ -160,11 +176,11 @@ interface UserService
      */
     public function register($registration, $type = 'default');
 
-    public function markLoginInfo();
+    public function markLoginInfo($type = null);
 
     public function markLoginFailed($userId, $ip);
 
-    public function markLoginSuccess($userId, $ip);
+    public function refreshLoginSecurityFields($userId, $ip);
 
     public function checkLoginForbidden($userId, $ip);
 
@@ -179,7 +195,7 @@ interface UserService
 
     public function getUserProfile($id);
 
-    public function searchUserProfiles(array $conditions, array $orderBy, $start, $limit, $columns = array());
+    public function searchUserProfiles(array $conditions, array $orderBy, $start, $limit, $columns = []);
 
     public function searchUserProfileCount(array $conditions);
 
@@ -189,7 +205,6 @@ interface UserService
 
     /**
      * @param $id
-     * @param array $roles
      *
      * @return mixed
      * @Log(module="user",action="change_role",funcName="getUser",param="id")
@@ -232,6 +247,15 @@ interface UserService
      */
     public function unlockUser($id);
 
+    /**
+     * @param $userId
+     * @param $nickname
+     *
+     * @return mixed
+     * @Log(module="user",action="delete_user",funcName="getUser",param="userId")
+     */
+    public function deleteUser($id);
+
     public function promoteUser($id, $number);
 
     public function cancelPromoteUser($id);
@@ -263,6 +287,12 @@ interface UserService
     public function getUserBindByTypeAndFromId($type, $fromId);
 
     public function getUserBindByTypeAndUserId($type, $toId);
+
+    public function findUserBindByTypeAndFromIds($type, $fromIds);
+
+    public function findUserBindByTypeAndToIds($type, $toIds);
+
+    public function findUserBindByTypeAndUserId($type, $toId);
 
     public function getUserBindByToken($token);
 
@@ -371,6 +401,8 @@ interface UserService
 
     public function generateUUID();
 
+    public function getSmsCommonCaptchaStatus($clientIp, $recount = false);
+
     public function getSmsRegisterCaptchaStatus($clientIp, $updateCount = false);
 
     public function updateSmsRegisterCaptchaStatus($clientIp);
@@ -380,8 +412,30 @@ interface UserService
      */
     public function initPassword($id, $newPassword);
 
+    public function validatePassword($password);
+
     /**
      * 人脸识别采集状态修改
      */
     public function setFaceRegistered($id);
+
+    /**
+     * 注销用户信息修改
+     *
+     * @param $userId
+     * @param $destroyedId (destroyed_account表对应id)
+     *
+     * @return array()
+     */
+    public function updateUserForDestroyedAccount($userId, $destroyedId);
+
+    public function deleteUserBindByUserId($userId);
+
+    public function findUnLockedUsersByUserIds($userIds = []);
+
+    public function updatePasswordChanged($id, $passwordChanged);
+
+    public function getStudentOpenInfo($userId);
+
+    public function findUserLikeNickname($nickname);
 }

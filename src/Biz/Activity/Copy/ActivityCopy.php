@@ -5,7 +5,7 @@ namespace Biz\Activity\Copy;
 use Biz\AbstractCopy;
 use Biz\Activity\Config\Activity;
 use Biz\Activity\Dao\ActivityDao;
-use Biz\Testpaper\Dao\TestpaperDao;
+use Biz\Activity\Service\LiveActivityService;
 
 class ActivityCopy extends AbstractCopy
 {
@@ -19,11 +19,12 @@ class ActivityCopy extends AbstractCopy
         $course = $options['originCourse'];
         $newCourse = $options['newCourse'];
         $newCourseSet = $options['newCourseSet'];
+        $cycleDifference = 0;
         $activities = $this->getActivityDao()->findByCourseId($course['id']);
         if (empty($activities)) {
-            return array();
+            return [];
         }
-        $activityMap = array();
+        $activityMap = [];
         foreach ($activities as $activity) {
             $newActivity = $this->partsFields($activity);
 
@@ -32,27 +33,29 @@ class ActivityCopy extends AbstractCopy
             $newActivity['fromCourseSetId'] = $newCourseSet['id'];
             $newActivity['copyId'] = $activity['id'];
 
-            $config = $this->getActivityConfig($activity['mediaType']);
-            $testId = 0;
-            if (in_array($activity['mediaType'], array('testpaper'))) {
-                $originalActivityTestpaper = $config->get($activity['mediaId']);
-                $activityTestpaper = $this->getTestpaperDao()->getTestpaperByCopyIdAndCourseSetId($originalActivityTestpaper['mediaId'], $newCourseSet['id']);
-                $testId = $activityTestpaper['id'];
+            if ('live' == $newActivity['mediaType']) { //直播
+                $newActivity['startTime'] = time();
+                $newActivity['endTime'] = $newActivity['startTime'] + $newActivity['length'] * 60;
+
+                if (!empty($options['newMultiClass'])) {
+                    if (0 == $cycleDifference) {
+                        $cycleDifference = abs(round((time() - $activity['startTime']) / 86400));
+                    }
+                    $startTime = $activity['startTime'] + $cycleDifference * 86400;
+                    $newActivity['startTime'] = $startTime < time() ? $startTime + 86400 : $startTime; //当前时间无法创建 延迟 1天
+                    $newActivity['endTime'] = $newActivity['startTime'] + $newActivity['length'] * 60;
+                }
             }
-            $ext = $config->copy($activity, array(
+
+            $ext = $this->getActivityConfig($activity['mediaType'])->copy($activity, [
                 'refLiveroom' => false,
-                'testId' => $testId,
                 'newActivity' => $newActivity,
                 'isCopy' => true,
-            ));
+                'newMultiClass' => !empty($options['newMultiClass']) ? $options['newMultiClass'] : [],
+            ]);
 
             if (!empty($ext)) {
                 $newActivity['mediaId'] = $ext['id'];
-            }
-
-            if ($newActivity['mediaType'] == 'live') { //直播
-                $newActivity['startTime'] = time();
-                $newActivity['endTime'] = $newActivity['startTime'] + $newActivity['length'] * 60;
             }
 
             $newActivity = $this->getActivityDao()->create($newActivity);
@@ -75,7 +78,7 @@ class ActivityCopy extends AbstractCopy
 
     protected function getFields()
     {
-        return array(
+        return [
             'mediaType',
             'title',
             'remark',
@@ -85,15 +88,7 @@ class ActivityCopy extends AbstractCopy
             'endTime',
             'finishType',
             'finishData',
-        );
-    }
-
-    /**
-     * @return TestpaperDao
-     */
-    protected function getTestpaperDao()
-    {
-        return $this->biz->dao('Testpaper:TestpaperDao');
+        ];
     }
 
     /**
@@ -112,5 +107,13 @@ class ActivityCopy extends AbstractCopy
     private function getActivityConfig($type)
     {
         return $this->biz["activity_type.{$type}"];
+    }
+
+    /**
+     * @return LiveActivityService
+     */
+    private function getLiveActivityService()
+    {
+        return $this->biz->service('Activity:LiveActivityService');
     }
 }

@@ -2,13 +2,18 @@
 
 namespace AppBundle\Listener;
 
-use Symfony\Component\HttpFoundation\Cookie;
-use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\HttpFoundation\RedirectResponse;
-use Symfony\Component\HttpKernel\Event\GetResponseEvent;
-use Symfony\Component\DependencyInjection\ContainerInterface;
-use Symfony\Component\HttpKernel\HttpKernelInterface;
+use Biz\System\Service\SettingService;
+use Biz\User\Service\TokenService;
+use Biz\User\Service\UserService;
 use Biz\User\UserException;
+use Symfony\Component\DependencyInjection\ContainerInterface;
+use Symfony\Component\HttpFoundation\Cookie;
+use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\RedirectResponse;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpKernel\Event\GetResponseEvent;
+use Symfony\Component\HttpKernel\HttpKernelInterface;
+use Topxia\MobileBundleV2\Controller\MobileBaseController;
 
 class UserLoginTokenListener
 {
@@ -33,6 +38,13 @@ class UserLoginTokenListener
         if (!$user->islogin()) {
             return;
         }
+
+        if (isset($user['passwordChanged']) && 1 == $user['passwordChanged']) {
+            $request->getSession()->invalidate();
+            $response = $this->logout('密码已修改，请您重新登录');
+            $event->setResponse($response);
+        }
+
         if (isset($user['locked']) && 1 == $user['locked']) {
             $this->container->get('security.token_storage')->setToken(null);
             setcookie('REMEMBERME');
@@ -60,9 +72,9 @@ class UserLoginTokenListener
             $request->getSession()->invalidate();
             $this->container->get('security.token_storage')->setToken(null);
 
-            $goto = $this->container->get('router')->generate('register_submited', array(
+            $goto = $this->container->get('router')->generate('register_submited', [
                 'id' => $user['id'], 'hash' => $this->makeHash($user),
-            ));
+            ]);
 
             $response = new RedirectResponse($goto, '302');
             $response->headers->setCookie(new Cookie('REMEMBERME', ''));
@@ -73,6 +85,19 @@ class UserLoginTokenListener
 
         $loginBind = $this->getSettingService()->get('login_bind');
 
+        if (!empty($loginBind['client_login_limit'])) {
+            $tokens = $this->getTokenService()->findTokensByUserIdAndType($user['id'], MobileBaseController::TOKEN_TYPE);
+            foreach ($tokens as $token) {
+                if (!isset($token['data']['client']) || 'app' == $token['data']['client']) {
+                    $request->getSession()->invalidate();
+                    $response = $this->logout('此帐号已在别处登录，请重新登录', $request->isXmlHttpRequest());
+                    $event->setResponse($response);
+
+                    return;
+                }
+            }
+        }
+
         if (empty($loginBind['login_limit'])) {
             return;
         }
@@ -81,8 +106,8 @@ class UserLoginTokenListener
 
         if (empty($user['loginSessionId']) || strlen($user['loginSessionId']) <= 0) {
             $sessionId = $request->getSession()->getId();
+            $this->getUserService()->markLoginInfo($request->get('type'));
             $this->getUserService()->rememberLoginSessionId($user['id'], $sessionId);
-            $this->getUserService()->markLoginSuccess($user['id'], $request->getClientIp());
 
             return;
         }
@@ -98,22 +123,28 @@ class UserLoginTokenListener
             $magic = $this->getSettingService()->get('magic');
 
             if ((!empty($magic['login_limit'])) && ($request->isXmlHttpRequest())) {
-                $response = new Response(array('error' => array('code' => UserException::LIMIT_LOGIN)), 403);
+                $response = new Response(['error' => ['code' => UserException::LIMIT_LOGIN]], 403);
                 $response->headers->clearCookie('REMEMBERME');
                 $response->send();
             }
             $request->getSession()->invalidate();
-
-            $this->container->get('security.token_storage')->setToken(null);
-
-            $goto = $this->container->get('router')->generate('login');
-
-            $response = new RedirectResponse($goto, '302');
-            setcookie('REMEMBERME', '', -1);
-            $this->container->get('session')->getFlashBag()->add('danger', '此帐号已在别处登录，请重新登录');
+            $response = $this->logout('此帐号已在别处登录，请重新登录');
 
             $event->setResponse($response);
         }
+    }
+
+    protected function logout($content, $isXmlHttpRequest = false)
+    {
+        $this->container->get('security.token_storage')->setToken(null);
+
+        $this->container->get('session')->getFlashBag()->add('danger', $content);
+
+        $goto = $this->container->get('router')->generate('login');
+        $response = $isXmlHttpRequest ? new JsonResponse(['goto' => $goto], 403) : new RedirectResponse($goto, '302');
+        $response->headers->clearCookie('REMEMBERME');
+
+        return $response;
     }
 
     private function makeHash($user)
@@ -123,19 +154,28 @@ class UserLoginTokenListener
         return md5($string);
     }
 
+    /**
+     * @return UserService
+     */
     protected function getUserService()
     {
         return $this->getBiz()->service('User:UserService');
     }
 
+    /**
+     * @return TokenService
+     */
+    protected function getTokenService()
+    {
+        return $this->getBiz()->service('User:TokenService');
+    }
+
+    /**
+     * @return SettingService
+     */
     protected function getSettingService()
     {
         return $this->getBiz()->service('System:SettingService');
-    }
-
-    protected function getAuthService()
-    {
-        return $this->getBiz()->service('User:AuthService');
     }
 
     protected function getBiz()

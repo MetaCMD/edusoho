@@ -8,16 +8,22 @@ use Biz\OrderFacade\Product\Product;
 
 class PickCouponCommand extends Command
 {
-    public function execute(Product $product, $params = array())
+    public function execute(Product $product, $params = [])
     {
         if (!empty($params['couponCode'])) {
-            $checkData = $this->getCouponService()->checkCoupon($params['couponCode'], $product->targetId, $product->targetType);
+            if ('course' === $product->targetType || 'classroom' === $product->targetType) {
+                $targetId = $product->originalTargetId;
+            } else {
+                $targetId = $product->targetId;
+            }
+            $couponCode = trim($params['couponCode']);
+            $checkData = $this->getCouponService()->checkCoupon($couponCode, $targetId, $product->targetType);
 
-            if (isset($checkData['useable']) && $checkData['useable'] == 'no') {
+            if (isset($checkData['useable']) && 'no' == $checkData['useable']) {
                 return;
             }
 
-            $coupon = $this->getCouponService()->getCouponByCode($params['couponCode']);
+            $coupon = $this->getCouponService()->getCouponByCode($couponCode);
 
             if ($product->promotionPrice) {
                 $coupon['deduct_amount'] = $this->getCouponService()->getDeductAmount($coupon, $product->promotionPrice);
@@ -25,14 +31,14 @@ class PickCouponCommand extends Command
                 $coupon['deduct_amount'] = $this->getCouponService()->getDeductAmount($coupon, $product->originPrice);
             }
 
-            $deduct = array(
+            $deduct = [
                 'deduct_amount' => $coupon['deduct_amount'],
                 'deduct_type' => 'coupon',
                 'deduct_id' => $coupon['id'],
-                'snapshot' => array(
+                'snapshot' => [
                     'couponCode' => $coupon['code'],
-                ),
-            );
+                ],
+            ];
             $product->pickedDeducts[] = $deduct;
         }
     }

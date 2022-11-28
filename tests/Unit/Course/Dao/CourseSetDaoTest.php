@@ -8,30 +8,30 @@ class CourseSetDaoTest extends BaseDaoTestCase
 {
     public function testSearch()
     {
-        $expected = array();
+        $expected = [];
         $expected[] = $this->mockDataObject();
         $expected[] = $this->mockDataObject();
         $expected[] = $this->mockDataObject();
 
-        $testConditions = array(
-            array(
-                'condition' => array('ids' => range(1, 3)),
+        $testConditions = [
+            [
+                'condition' => ['ids' => range(1, 3)],
                 'expectedResults' => $expected,
                 'expectedCount' => 3,
-            ),
-            array(
-                'condition' => array('status' => 'draft'),
+            ],
+            [
+                'condition' => ['status' => 'draft'],
                 'expectedResults' => $expected,
                 'expectedCount' => 3,
-            ),
-        );
+            ],
+        ];
 
         $this->searchTestUtil($this->getDao(), $testConditions, $this->getCompareKeys());
     }
 
     public function testFindByIds()
     {
-        $expected = array();
+        $expected = [];
         for ($i = 0; $i < 10; ++$i) {
             $expected[] = $this->mockDataObject();
         }
@@ -43,64 +43,66 @@ class CourseSetDaoTest extends BaseDaoTestCase
 
     public function testFindLikeTitle()
     {
-        $expected = array();
+        $expected = [];
         $expected[] = $this->mockDataObject();
-        $expected[] = $this->mockDataObject(array('title' => 'mm'));
-        $expected[] = $this->mockDataObject(array('title' => 'hehe'));
+        $expected[] = $this->mockDataObject(['title' => 'mm']);
+        $expected[] = $this->mockDataObject(['title' => 'hehe']);
 
         $res = $this->getDao()->findLikeTitle('m');
 
-        $this->assertEquals(array($expected[0], $expected[1]), $res);
+        $this->assertEquals([$expected[0], $expected[1]], $res);
     }
 
     public function testFindLinkEmptyTitle()
     {
-        $expected = array();
+        $expected = [];
         $expected[] = $this->mockDataObject();
-        $expected[] = $this->mockDataObject(array('title' => 'mm'));
-        $expected[] = $this->mockDataObject(array('title' => 'hehe'));
+        $expected[] = $this->mockDataObject(['title' => 'mm']);
+        $expected[] = $this->mockDataObject(['title' => 'hehe']);
 
         $res = $this->getDao()->findLikeTitle(null);
 
-        $this->assertEquals(array($expected[0], $expected[1], $expected[2]), $res);
+        $this->assertEquals([$expected[0], $expected[1], $expected[2]], $res);
     }
 
     public function testAnalysisCourseSetDataByTime()
     {
         $count = 10;
+        $expectedResult = [];
 
-        while (true) {
-            $startTime = time();
-            $endTime = $startTime + 30;
-            if (date('Y-m-d', $startTime) == date('Y-m-d', $endTime)) {
-                for ($i = 0; $i < $count; ++$i) {
-                    $createdTime = $startTime + $i;
-                    $data = array_merge(
-                        $this->getDefaultMockFields(),
-                        array(
-                            'createdTime' => $createdTime,
-                            'updatedTime' => $createdTime,
-                        )
-                    );
-                    $this->getDao()->create($data);
-                }
-                $result = $this->getDao()->analysisCourseSetDataByTime($startTime, $startTime + 30);
-                break;
-            }
+        $startTime = time();
+        for ($i = 0; $i < $count; ++$i) {
+            $data = $this->getDefaultMockFields();
+            $this->getDao()->create($data);
+            $expectedResult = $this->makeExpectedResult($expectedResult);
+        }
+        $endTime = time();
 
-            sleep(30);
+        $result = $this->getDao()->analysisCourseSetDataByTime($startTime, $endTime);
+
+        $this->assertArrayEquals(array_values($expectedResult), $result);
+    }
+
+    private function makeExpectedResult($expectedResult)
+    {
+        if (empty($expectedResult[date('Y-m-d')])) {
+            $expectedResult[date('Y-m-d')] = [
+                'count' => 1,
+                'date' => date('Y-m-d'),
+            ];
+        } else {
+            $expectedResult[date('Y-m-d')] = [
+                'count' => ++$expectedResult[date('Y-m-d')]['count'],
+                'date' => date('Y-m-d'),
+            ];
         }
 
-        $expectedResult = array(array(
-            'count' => $count,
-            'date' => date('Y-m-d', $startTime),
-        ));
-        $this->assertArrayEquals($expectedResult, $result);
+        return $expectedResult;
     }
 
     protected function getDefaultMockFields()
     {
-        return array(
+        return [
             'type' => 'course',
             'title' => 'hmm',
             'subtitle' => 'oh',
@@ -110,6 +112,6 @@ class CourseSetDaoTest extends BaseDaoTestCase
             'rating' => 1,
             'noteNum' => 1,
             'studentNum' => 1,
-        );
+        ];
     }
 }

@@ -2,18 +2,17 @@
 
 namespace AppBundle\Controller;
 
+use AppBundle\Common\SmsToolkit;
 use Biz\System\Service\LogService;
 use Biz\User\Service\AuthService;
 use Biz\User\Service\TokenService;
-use AppBundle\Common\SmsToolkit;
+use Symfony\Component\Form\Extension\Core\Type\PasswordType;
 use Symfony\Component\HttpFoundation\Request;
 
 class PasswordResetController extends BaseController
 {
     public function indexAction(Request $request)
     {
-        $user = $this->getCurrentUser();
-
         return $this->render('password-reset/index.html.twig');
     }
 
@@ -27,11 +26,11 @@ class PasswordResetController extends BaseController
             $user = $this->getUserService()->getUserByVerifiedMobile($mobile);
         }
 
-        return $this->render('password-reset/sent.html.twig', array(
+        return $this->render('password-reset/sent.html.twig', [
             'user' => $user,
             'email' => $email,
             'mobile' => $mobile,
-        ));
+        ]);
     }
 
     public function updateAction(Request $request)
@@ -43,12 +42,12 @@ class PasswordResetController extends BaseController
         }
 
         $form = $this->createFormBuilder()
-            ->add('password', 'password')
-            ->add('confirmPassword', 'password')
+            ->add('password', PasswordType::class)
+            ->add('confirmPassword', PasswordType::class)
             ->getForm();
 
         if ('POST' === $request->getMethod()) {
-            $form->bind($request);
+            $form->handleRequest($request);
 
             if ($form->isValid()) {
                 $data = $form->getData();
@@ -61,9 +60,9 @@ class PasswordResetController extends BaseController
             }
         }
 
-        return $this->render('password-reset/update.html.twig', array(
+        return $this->render('password-reset/update.html.twig', [
             'form' => $form->createView(),
-        ));
+        ]);
     }
 
     public function changeRawPasswordAction(Request $request)
@@ -94,9 +93,9 @@ class PasswordResetController extends BaseController
                 $token = $this->getUserService()->makeToken('password-reset', $targetUser['id'], strtotime('+1 day'));
                 $request->request->set('token', $token);
 
-                return $this->redirect($this->generateUrl('password_reset_update', array(
+                return $this->redirect($this->generateUrl('password_reset_update', [
                     'token' => $token,
-                )));
+                ]));
             }
 
             return $this->createMessageResponse('error', '手机短信验证错误，请重新找回');
@@ -111,9 +110,9 @@ class PasswordResetController extends BaseController
         list($result, $message) = $this->getAuthService()->checkMobile($mobile);
 
         if ('success' === $result) {
-            $response = array('success' => false, 'message' => '该手机号码不存在');
+            $response = ['success' => false, 'message' => '该手机号码不存在'];
         } else {
-            $response = array('success' => true, 'message' => '');
+            $response = ['success' => true, 'message' => ''];
         }
 
         return $this->createJsonResponse($response);

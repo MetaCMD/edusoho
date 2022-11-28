@@ -2,6 +2,7 @@
 
 namespace Biz\Common;
 
+use AppBundle\Common\Exception\UnexpectedValueException;
 use AppBundle\Common\TimeMachine;
 use Codeages\Biz\Framework\Context\BizAware;
 
@@ -19,20 +20,26 @@ class BizSms extends BizAware
 
     const SMS_FORGET_PASSWORD = 'sms_forget_password';
 
-    public function send($smsType, $mobile, $options = array())
-    {
-        $options = array_merge(array('duration' => TimeMachine::HALF_HOUR, 'times' => 10, 'userId' => 0), $options);
-        $result = $this->getSmsService()->sendVerifySms($smsType, $mobile, 0);
+    const SMS_LOGIN = 'sms_login';
 
-        $smsToken = $this->getTokenService()->makeToken($smsType, array(
+    public function send($smsType, $mobile, $options = [], $unique = 1)
+    {
+        $options = array_merge(['duration' => TimeMachine::HALF_HOUR, 'times' => 10, 'userId' => 0], $options);
+        $result = $this->getSmsService()->sendVerifySms($smsType, $mobile, 0, $unique);
+
+        if (isset($result['error'])) {
+            throw new UnexpectedValueException($result['error'], 500);
+        }
+
+        $smsToken = $this->getTokenService()->makeToken($smsType, [
             'times' => $options['times'],
             'duration' => $options['duration'],
             'userId' => $options['userId'],
-            'data' => array(
+            'data' => [
                 'code' => $result['captcha_code'],
                 'mobile' => $mobile,
-            ),
-        ));
+            ],
+        ]);
 
         return $smsToken;
     }

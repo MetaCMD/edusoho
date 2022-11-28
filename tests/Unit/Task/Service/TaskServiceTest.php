@@ -2,13 +2,14 @@
 
 namespace Tests\Unit\Task\Service;
 
+use AppBundle\Common\ReflectionUtils;
 use Biz\Activity\Service\ActivityLearnLogService;
+use Biz\BaseTestCase;
+use Biz\Course\Service\CourseService;
 use Biz\Course\Service\CourseSetService;
 use Biz\Task\Dao\TaskDao;
-use Biz\Task\Service\TaskService;
-use Biz\Course\Service\CourseService;
 use Biz\Task\Service\TaskResultService;
-use Biz\BaseTestCase;
+use Biz\Task\Service\TaskService;
 use Biz\User\CurrentUser;
 use Biz\User\Service\UserService;
 
@@ -28,7 +29,7 @@ class TaskServiceTest extends BaseTestCase
         $task = $this->mockTask();
         $savedTask = $this->getTaskService()->createTask($task);
         $result = $this->getTaskService()->getCourseTask($task['fromCourseId'], $savedTask['id'] + 100);
-        $this->assertEquals(array(), $result);
+        $this->assertEquals([], $result);
     }
 
     public function testGetCourseTaskWithNonExistCourseId()
@@ -36,14 +37,14 @@ class TaskServiceTest extends BaseTestCase
         $task = $this->mockTask();
         $savedTask = $this->getTaskService()->createTask($task);
         $result = $this->getTaskService()->getCourseTask($task['fromCourseId'] + 100, $savedTask['id']);
-        $this->assertEquals(array(), $result);
+        $this->assertEquals([], $result);
     }
 
     public function testGetCourseTaskByCourseIdAndCopyId()
     {
         $task = $this->mockTask();
         $savedTask = $this->getTaskService()->createTask($task);
-        $updatedTask = $this->getTaskDao()->update($savedTask['id'], array('copyId' => 10));
+        $updatedTask = $this->getTaskDao()->update($savedTask['id'], ['copyId' => 10]);
         $result = $this->getTaskService()->getCourseTaskByCourseIdAndCopyId($task['fromCourseId'], 10);
         $this->assertEquals($updatedTask['id'], $result['id']);
     }
@@ -90,15 +91,25 @@ class TaskServiceTest extends BaseTestCase
         $this->assertNull($savedTask);
     }
 
+    public function testFindTasksByCategoryIds()
+    {
+        $task = $this->mockTask();
+        $this->getTaskService()->createTask($task);
+
+        $result = $this->getTaskService()->findTasksByCategoryIds(['1']);
+
+        $this->assertCount(1, $result);
+    }
+
     public function testFindTasksByCourseId()
     {
         $task = $this->mockTask();
         $savedTask = $this->getTaskService()->createTask($task);
 
-        $task = $this->mockSimpleTask(1);
+        $task = $this->mockSimpleTask($task['fromCourseId']);
         $savedTask = $this->getTaskService()->createTask($task);
 
-        $tasks = $this->getTaskService()->findTasksByCourseId(1);
+        $tasks = $this->getTaskService()->findTasksByCourseId($task['fromCourseId']);
 
         $this->assertNotNull($tasks);
         $this->assertEquals(2, count($tasks));
@@ -136,9 +147,9 @@ class TaskServiceTest extends BaseTestCase
 
         $this->getTaskService()->startTask($task['id']);
         $taskResult = $this->getTaskResultService()->getUserTaskResultByTaskId($task['id']);
-        $this->getTaskResultService()->updateTaskResult($taskResult['id'], array(
+        $this->getTaskResultService()->updateTaskResult($taskResult['id'], [
             'time' => 2000,
-        ));
+        ]);
         $this->getTaskService()->finishTask($task['id']);
 
         $result = $this->getTaskResultService()->getUserTaskResultByTaskId($task['id']);
@@ -148,11 +159,11 @@ class TaskServiceTest extends BaseTestCase
     public function testGetNextTask()
     {
         $task = $this->mockTask();
-        $lesson = $this->getCourseService()->createChapter(array('title' => 'lesson', 'type' => 'lesson', 'status' => 'published', 'courseId' => $task['fromCourseId']));
+        $lesson = $this->getCourseService()->createChapter(['title' => 'lesson', 'type' => 'lesson', 'status' => 'published', 'courseId' => $task['fromCourseId']]);
         $task['categoryId'] = $lesson['id'];
         $firstTask = $this->getTaskService()->createTask($task);
 
-        $task = $this->mockSimpleTask(1);
+        $task = $this->mockSimpleTask($task['fromCourseId']);
         $task['status'] = 'published';
         $task['seq'] = 2;
         $task['categoryId'] = $lesson['id'];
@@ -165,9 +176,9 @@ class TaskServiceTest extends BaseTestCase
         //finish firstTask;
         $this->getTaskService()->startTask($firstTask['id']);
         $taskResult = $this->getTaskResultService()->getUserTaskResultByTaskId($firstTask['id']);
-        $this->getTaskResultService()->updateTaskResult($taskResult['id'], array(
+        $this->getTaskResultService()->updateTaskResult($taskResult['id'], [
             'time' => 2000,
-        ));
+        ]);
         $this->getTaskService()->finishTask($firstTask['id']);
 
         $nextTask = $this->getTaskService()->getNextTask($firstTask['id']);
@@ -178,7 +189,7 @@ class TaskServiceTest extends BaseTestCase
     public function testCanLearnTask()
     {
         $task = $this->mockTask();
-        $lesson = $this->getCourseService()->createChapter(array('title' => 'lesson', 'type' => 'lesson', 'status' => 'published', 'courseId' => $task['fromCourseId']));
+        $lesson = $this->getCourseService()->createChapter(['title' => 'lesson', 'type' => 'lesson', 'status' => 'published', 'courseId' => $task['fromCourseId']]);
         $task['categoryId'] = $lesson['id'];
         $firstTask = $this->getTaskService()->createTask($task);
 
@@ -207,7 +218,7 @@ class TaskServiceTest extends BaseTestCase
         $this->assertEquals(false, $isLearned);
 
         //finished
-        $this->getTaskResultService()->updateTaskResult($taskResult['id'], array('status' => 'finish'));
+        $this->getTaskResultService()->updateTaskResult($taskResult['id'], ['status' => 'finish']);
         $isLearned = $this->getTaskService()->isTaskLearned($firstTask['id']);
         $this->assertEquals(true, $isLearned);
     }
@@ -227,11 +238,11 @@ class TaskServiceTest extends BaseTestCase
 
     public function testPreCreateTaskCheck()
     {
-        $this->mockBiz('Activity:ActivityService', array(
-           array('functionName' => 'preCreateCheck', 'returnValue' => ''),
-        ));
+        $this->mockBiz('Activity:ActivityService', [
+            ['functionName' => 'preCreateCheck', 'returnValue' => ''],
+        ]);
 
-        $this->getTaskService()->preCreateTaskCheck(array('mediaType' => 'live'));
+        $this->getTaskService()->preCreateTaskCheck(['mediaType' => 'live']);
     }
 
     /**
@@ -239,7 +250,7 @@ class TaskServiceTest extends BaseTestCase
      */
     public function testPreUpdateTaskCheck()
     {
-        $this->getTaskService()->preUpdateTaskCheck(10000, array());
+        $this->getTaskService()->preUpdateTaskCheck(10000, []);
     }
 
     public function testPublishTask()
@@ -338,7 +349,7 @@ class TaskServiceTest extends BaseTestCase
         $task = $this->mockTask();
         $task1 = $this->getTaskService()->createTask($task);
 
-        $seq = array('seq' => 10, 'categoryId' => $task1['categoryId'], 'number' => 10);
+        $seq = ['seq' => 10, 'categoryId' => $task1['categoryId'], 'number' => 10];
         $result = $this->getTaskService()->updateSeq($task1['id'], $seq);
 
         $this->assertEquals(10, $result['seq']);
@@ -354,7 +365,7 @@ class TaskServiceTest extends BaseTestCase
         $this->assertEquals(0, $task1['isFree']);
         $this->assertEquals(0, $task2['isFree']);
 
-        $this->getTaskService()->updateTasks(array($task1['id'], $task2['id']), array('isFree' => 1));
+        $this->getTaskService()->updateTasks([$task1['id'], $task2['id']], ['isFree' => 1]);
 
         $taskResult1 = $this->getTaskService()->getTask($task1['id']);
         $taskResult2 = $this->getTaskService()->getTask($task2['id']);
@@ -382,9 +393,24 @@ class TaskServiceTest extends BaseTestCase
         $task1 = $this->getTaskService()->createTask($task);
         $task2 = $this->getTaskService()->createTask($task);
 
-        $tasks = $this->getTaskService()->findTasksByCourseIds(array($task['fromCourseId']));
+        $tasks = $this->getTaskService()->findTasksByCourseIds([$task['fromCourseId']]);
 
         $this->assertEquals(2, count($tasks));
+    }
+
+    public function testCanStartTask()
+    {
+        $task = $this->mockTask();
+        $task = $this->getTaskService()->createTask($task);
+
+        $this->mockBiz('Course:CourseService', [
+            [
+                'functionName' => 'getCourse',
+                'returnValue' => ['id' => 1, 'enableFinish' => 1],
+            ],
+        ]);
+
+        $this->assertEquals($this->getTaskService()->canStartTask(1), true);
     }
 
     public function testFindTasksByActivityIds()
@@ -393,7 +419,7 @@ class TaskServiceTest extends BaseTestCase
         $task1 = $this->getTaskService()->createTask($task);
         $task2 = $this->getTaskService()->createTask($task);
 
-        $tasks = $this->getTaskService()->findTasksByActivityIds(array($task1['activityId'], $task2['activityId']));
+        $tasks = $this->getTaskService()->findTasksByActivityIds([$task1['activityId'], $task2['activityId']]);
 
         $this->assertEquals(2, count($tasks));
     }
@@ -415,7 +441,7 @@ class TaskServiceTest extends BaseTestCase
         $task1 = $this->getTaskService()->createTask($task);
         $task2 = $this->getTaskService()->createTask($task);
 
-        $tasks = $this->getTaskService()->findTasksByIds(array($task1['id'], $task2['id']));
+        $tasks = $this->getTaskService()->findTasksByIds([$task1['id'], $task2['id']]);
 
         $this->assertEquals(2, count($tasks));
     }
@@ -450,13 +476,13 @@ class TaskServiceTest extends BaseTestCase
         $this->assertEmpty($tasks[0]['result']);
         $this->assertEmpty($tasks[1]['result']);
 
-        $this->mockBiz('Task:TaskResultService', array(
-            array('functionName' => 'findUserTaskResultsByTaskIds', 'returnValue' => array(
-                array('courseTaskId' => $task1['id']),
-                array('courseTaskId' => $task['id']),
-                ),
-            ),
-        ));
+        $this->mockBiz('Task:TaskResultService', [
+            ['functionName' => 'findUserTaskResultsByTaskIds', 'returnValue' => [
+                ['courseTaskId' => $task1['id']],
+                ['courseTaskId' => $task['id']],
+            ],
+            ],
+        ]);
 
         $tasks = $this->getTaskService()->findTasksFetchActivityAndResultByCourseId($task['courseId']);
 
@@ -476,14 +502,14 @@ class TaskServiceTest extends BaseTestCase
         $task1 = $this->getTaskService()->createTask($this->mockSimpleTask($course['id'], $courseSet['id']));
         $this->getTaskService()->publishTask($task1['id']);
 
-        $this->mockBiz('Course:CourseService', array(
-            array('functionName' => 'findUserTeachCourses', 'returnValue' => array(
-                array('courseId' => $task1['courseId']),
-            )),
-            array('functionName' => 'searchCourses', 'returnValue' => array(
-                array('id' => $task1['courseId']),
-            )),
-        ));
+        $this->mockBiz('Course:CourseService', [
+            ['functionName' => 'findUserTeachCourses', 'returnValue' => [
+                ['courseId' => $task1['courseId']],
+            ]],
+            ['functionName' => 'searchCourses', 'returnValue' => [
+                ['id' => $task1['courseId']],
+            ]],
+        ]);
 
         $tasks = $this->getTaskService()->findUserTeachCoursesTasksByCourseSetId($this->getCurrentUser()->getId(), $courseSet['id']);
         $this->assertEquals(2, count($tasks));
@@ -500,7 +526,7 @@ class TaskServiceTest extends BaseTestCase
         $task1 = $this->getTaskService()->createTask($this->mockSimpleTask($course['id'], $courseSet['id']));
         $this->getTaskService()->publishTask($task1['id']);
 
-        $tasks = $this->getTaskService()->searchTasks(array('courseId' => $course['id']), array('id' => 'DESC'), 0, 10);
+        $tasks = $this->getTaskService()->searchTasks(['courseId' => $course['id']], ['id' => 'DESC'], 0, 10);
         $this->assertEquals(2, count($tasks));
     }
 
@@ -523,10 +549,10 @@ class TaskServiceTest extends BaseTestCase
         $task = $this->getTaskService()->createTask($this->mockSimpleTask($course['id'], $courseSet['id']));
         $this->getTaskService()->publishTask($task['id']);
 
-        $this->mockBiz('Task:TaskResultService', array(
-            array('functionName' => 'getUserTaskResultByTaskId', 'returnValue' => array('id' => 1, 'courseTaskId' => $task['id'])),
-            array('functionName' => 'waveLearnTime', 'returnValue' => array('id' => 1)),
-        ));
+        $this->mockBiz('Task:TaskResultService', [
+            ['functionName' => 'getUserTaskResultByTaskId', 'returnValue' => ['id' => 1, 'courseTaskId' => $task['id']]],
+            ['functionName' => 'waveLearnTime', 'returnValue' => ['id' => 1]],
+        ]);
 
         $this->getTaskService()->doTask($task['id']);
     }
@@ -539,10 +565,10 @@ class TaskServiceTest extends BaseTestCase
         $task = $this->getTaskService()->createTask($this->mockSimpleTask($course['id'], $courseSet['id']));
         $this->getTaskService()->publishTask($task['id']);
 
-        $this->mockBiz('Task:TaskResultService', array(
-            array('functionName' => 'getUserTaskResultByTaskId', 'returnValue' => array('id' => 1, 'courseTaskId' => $task['id'])),
-            array('functionName' => 'waveWatchTime', 'returnValue' => array('id' => 1)),
-        ));
+        $this->mockBiz('Task:TaskResultService', [
+            ['functionName' => 'getUserTaskResultByTaskId', 'returnValue' => ['id' => 1, 'courseTaskId' => $task['id']]],
+            ['functionName' => 'waveWatchTime', 'returnValue' => ['id' => 1]],
+        ]);
 
         $this->getTaskService()->watchTask($task['id']);
     }
@@ -555,14 +581,14 @@ class TaskServiceTest extends BaseTestCase
         $task = $this->getTaskService()->createTask($this->mockSimpleTask($course['id'], $courseSet['id']));
         $this->getTaskService()->publishTask($task['id']);
 
-        $this->mockBiz('Activity:ActivityService', array(
-            array('functionName' => 'getActivity', 'returnValue' => array('id' => 1, 'mediaType' => 'live')),
-            array('functionName' => 'isFinished', 'returnValue' => true),
-        ));
+        $this->mockBiz('Activity:ActivityService', [
+            ['functionName' => 'getActivity', 'returnValue' => ['id' => 1, 'mediaType' => 'live']],
+            ['functionName' => 'isFinished', 'returnValue' => true],
+        ]);
 
-        $this->mockBiz('Task:TaskResultService', array(
-            array('functionName' => 'getUserTaskResultByTaskId', 'returnValue' => array('id' => 1, 'courseTaskId' => $task['id'], 'status' => 'finish')),
-        ));
+        $this->mockBiz('Task:TaskResultService', [
+            ['functionName' => 'getUserTaskResultByTaskId', 'returnValue' => ['id' => 1, 'courseTaskId' => $task['id'], 'status' => 'finish']],
+        ]);
 
         $result = $this->getTaskService()->finishTask($task['id']);
 
@@ -597,34 +623,14 @@ class TaskServiceTest extends BaseTestCase
         $this->assertEquals(10, $result['maxOnlineNum']);
     }
 
-    public function testFindFutureLiveDates()
-    {
-        $courseSet = $this->createNewCourseSet();
-        $course = $this->createNewCourse($courseSet['id']);
-
-        $task = $this->mockSimpleTask($course['id'], $courseSet['id']);
-        $task = $this->getTaskService()->createTask($task);
-        $this->getTaskService()->publishTask($task['id']);
-
-        $this->mockBiz('Task:TaskDao', array(
-            array('functionName' => 'findFutureLiveDates', 'returnValue' => array(
-                array('count' => 2, 'courseSetId' => $courseSet['id'], 'date' => date('Y-m-d', time() + 86400)),
-            )),
-        ));
-
-        $results = $this->getTaskService()->findFutureLiveDates(10);
-
-        $this->assertEquals(1, count($results));
-    }
-
     public function testFindPublishedLivingTasksByCourseSetId()
     {
-        $this->mockBiz('Task:TaskDao', array(
-            array('functionName' => 'search', 'returnValue' => array(
-                array('id' => 1),
-            )),
-            array('functionName' => 'count', 'returnValue' => 1),
-        ));
+        $this->mockBiz('Task:TaskDao', [
+            ['functionName' => 'search', 'returnValue' => [
+                ['id' => 1],
+            ]],
+            ['functionName' => 'count', 'returnValue' => 1],
+        ]);
 
         $tasks = $this->getTaskService()->findPublishedLivingTasksByCourseSetId(1);
 
@@ -633,16 +639,197 @@ class TaskServiceTest extends BaseTestCase
 
     public function testFindPublishedTasksByCourseSetId()
     {
-        $this->mockBiz('Task:TaskDao', array(
-            array('functionName' => 'search', 'returnValue' => array(
-                array('id' => 1),
-            )),
-            array('functionName' => 'count', 'returnValue' => 1),
-        ));
+        $this->mockBiz('Task:TaskDao', [
+            ['functionName' => 'search', 'returnValue' => [
+                ['id' => 1],
+            ]],
+            ['functionName' => 'count', 'returnValue' => 1],
+        ]);
 
         $tasks = $this->getTaskService()->findPublishedTasksByCourseSetId(1);
 
         $this->assertEquals(1, count($tasks));
+    }
+
+    public function testFindCurrentLiveTasks()
+    {
+        $this->mockBiz('Task:TaskDao', [
+            ['functionName' => 'search', 'returnValue' => [
+                ['id' => 1],
+            ]],
+            ['functionName' => 'count', 'returnValue' => 1],
+        ]);
+
+        $tasks = $this->getTaskService()->findCurrentLiveTasks();
+
+        $this->assertEquals(1, count($tasks));
+    }
+
+    public function testFindFutureLiveTasks()
+    {
+        $this->mockBiz('Task:TaskDao', [
+            ['functionName' => 'search', 'returnValue' => [
+                ['id' => 1],
+            ]],
+            ['functionName' => 'count', 'returnValue' => 1],
+        ]);
+
+        $tasks = $this->getTaskService()->findFutureLiveTasks();
+
+        $this->assertEquals(1, count($tasks));
+    }
+
+    public function testFindPastLivedCourseSetIds()
+    {
+        $this->mockBiz('Task:TaskDao', [
+            ['functionName' => 'findPastLivedCourseSetIds', 'returnValue' => [
+                ['id' => 1, 'fromCourseSetId' => 2],
+            ]],
+        ]);
+
+        $tasks = $this->getTaskService()->findPastLivedCourseSetIds();
+
+        $this->assertEquals(1, count($tasks));
+    }
+
+    /**
+     * @expectedException \Biz\Task\TaskException
+     * @expectedExceptionMessage exception.task.task_is_locked
+     */
+    public function testTryTakeTaskWithLockedTask()
+    {
+        $this->mockBiz('Task:TaskDao', [
+            ['functionName' => 'get', 'returnValue' => ['isFree' => false, 'courseId' => 1]],
+        ]);
+        $this->mockBiz('Course:CourseService', [
+            ['functionName' => 'tryTakeCourse', 'returnValue' => ['id' => 1]],
+            ['functionName' => 'canTakeCourse', 'returnValue' => false],
+        ]);
+
+        $this->getTaskService()->tryTakeTask(1);
+    }
+
+    public function testCountTasksByChpaterId()
+    {
+        $courseSet = $this->createNewCourseSet();
+        $course = $this->createNewCourse($courseSet['id']);
+
+        $task = $this->mockSimpleTask($course['id'], $courseSet['id']);
+        $task = $this->getTaskService()->createTask($task);
+
+        $count = $this->getTaskService()->countTasksByChpaterId($task['categoryId']);
+        $this->assertEquals(1, $count);
+    }
+
+    public function testFindToLearnTasksByCourseIdForMission()
+    {
+        $courseSet = $this->createNewCourseSet();
+        $course = $this->createNewCourse($courseSet['id']);
+
+        $task = $this->mockSimpleTask($course['id'], $courseSet['id']);
+        $this->getTaskService()->createTask($task);
+
+        $result = $this->getTaskService()->findToLearnTasksByCourseIdForMission($course['id']);
+        $this->assertEmpty($result);
+    }
+
+    public function testGetToLearnTaskWithFreeMode()
+    {
+        $this->mockBiz('Task:TaskResultService', [
+            ['functionName' => 'findUserFinishedTaskResultsByCourseId', 'returnValue' => [
+                ['courseTaskId' => 1],
+            ]],
+            ['functionName' => 'findUserProgressingTaskResultByCourseId', 'returnValue' => [
+                ['courseTaskId' => 1],
+            ]],
+        ]);
+        $this->mockBiz('Task:TaskDao', [
+            ['functionName' => 'search', 'returnValue' => [
+                ['id' => 1, 'title' => 'test'],
+            ]],
+        ]);
+        $result = ReflectionUtils::invokeMethod($this->getTaskService(), 'getToLearnTaskWithFreeMode', [1]);
+        $this->assertEquals('test', $result['title']);
+    }
+
+    public function testGetToLearnTasksWithLockMode()
+    {
+        $this->mockBiz('Task:TaskResultService', [
+            ['functionName' => 'getUserLatestFinishedTaskResultByCourseId', 'returnValue' => [
+                ['id' => 1, 'courseTaskId' => 1],
+            ]],
+        ]);
+        $this->mockBiz('Task:TaskDao', [
+            ['functionName' => 'search', 'returnValue' => [
+                ['id' => 1, 'title' => 'test', 'seq' => 1],
+                ['id' => 2, 'title' => 'test2', 'seq' => 2],
+            ]],
+        ]);
+        $this->mockBiz('Course:CourseService', [
+            ['functionName' => 'getCourse', 'returnValue' => ['isHideUnpublish' => true]],
+        ]);
+        $result = ReflectionUtils::invokeMethod($this->getTaskService(), 'getToLearnTasksWithLockMode', [1]);
+        $this->assertEquals('test', $result[0][0]['title']);
+        $this->assertEquals('test2', $result[0][1]['title']);
+    }
+
+    public function testTrigger()
+    {
+        $courseSet = $this->createNewCourseSet();
+        $course = $this->createNewCourse($courseSet['id']);
+
+        $task = $this->mockSimpleTask($course['id'], $courseSet['id']);
+        $task = $this->getTaskService()->createTask($task);
+        $this->mockBiz('Activity:ActivityService', [
+            ['functionName' => 'trigger', 'returnValue' => []],
+        ]);
+        $this->mockBiz('Task:TaskResultService', [
+            ['functionName' => 'getUserTaskResultByTaskId', 'returnValue' => ['id' => 1]],
+        ]);
+
+        $result = $this->getTaskService()->trigger($task['id'], 'test');
+        $this->assertEquals(1, $result['id']);
+    }
+
+    public function testAnalysisTaskDataByTime()
+    {
+        $result = $this->getTaskService()->analysisTaskDataByTime(time(), time() + 86400);
+        $this->assertEmpty($result);
+    }
+
+    public function testCountLessonsWithMultipleTasks()
+    {
+        $result = $this->getTaskService()->analysisTaskDataByTime(time(), time() + 86400);
+
+        $this->assertEmpty($result);
+    }
+
+    public function testFillTaskResultAndLockStatus()
+    {
+        $this->mockBiz('Activity:ActivityService', [
+            ['functionName' => 'findActivities', 'returnValue' => [
+                ['id' => 1],
+                ['id' => 2],
+            ]],
+        ]);
+        $this->mockBiz('Task:TaskResultService', [
+            ['functionName' => 'findUserTaskResultsByTaskIds', 'returnValue' => [
+                ['courseTaskId' => 1],
+            ]],
+        ]);
+        $this->mockBiz('Course:MemberService', [
+            ['functionName' => 'isCourseTeacher', 'returnValue' => ['role' => 'USER_TEACHER']],
+        ]);
+
+        $result = ReflectionUtils::invokeMethod($this->getTaskService(), 'fillTaskResultAndLockStatus', [
+            [
+                ['activityId' => 1, 'id' => 1],
+                ['activityId' => 2, 'id' => 2],
+            ],
+            ['learnMode' => 'lockMode', 'id' => 1],
+            [['activityId' => 1, 'id' => 1], ['activityId' => 2, 'id' => 2]],
+        ]);
+        $this->assertEquals(1, $result[0]['activityId']);
     }
 
     public function testGetMaxSeqByCourseId()
@@ -654,7 +841,7 @@ class TaskServiceTest extends BaseTestCase
         $task = $this->getTaskService()->createTask($task);
         $this->getTaskService()->publishTask($task['id']);
 
-        $seq = array('seq' => 10, 'categoryId' => $task['categoryId'], 'number' => 10);
+        $seq = ['seq' => 10, 'categoryId' => $task['categoryId'], 'number' => 10];
         $this->getTaskService()->updateSeq($task['id'], $seq);
 
         $result = $this->getTaskService()->getMaxSeqByCourseId($course['id']);
@@ -671,7 +858,7 @@ class TaskServiceTest extends BaseTestCase
         $task = $this->getTaskService()->createTask($task);
         $this->getTaskService()->publishTask($task['id']);
 
-        $seq = array('seq' => 10, 'categoryId' => $task['categoryId'], 'number' => 10);
+        $seq = ['seq' => 10, 'categoryId' => $task['categoryId'], 'number' => 10];
         $this->getTaskService()->updateSeq($task['id'], $seq);
 
         $result = $this->getTaskService()->getMaxNumberByCourseId($course['id']);
@@ -745,58 +932,59 @@ class TaskServiceTest extends BaseTestCase
         $endToday = mktime(0, 0, 0, date('m'), date('d') + 1, date('Y')) - 1;
         $this->mockBiz(
             'Task:TaskDao',
-            array(
-                array(
+            [
+                [
                     'functionName' => 'search',
-                    'returnValue' => array(
-                        array('id' => 2, 'courseId' => 2),
-                        array('id' => 3, 'courseId' => 3),
-                    ),
-                    'withParams' => array(
-                        array('type' => 'live', 'startTime_GE' => $beginToday, 'endTime_LT' => $endToday, 'status' => 'published'),
-                        array(),
+                    'returnValue' => [
+                        ['id' => 2, 'courseId' => 2],
+                        ['id' => 3, 'courseId' => 3],
+                    ],
+                    'withParams' => [
+                        ['type' => 'live', 'startTime_GE' => $beginToday, 'endTime_LT' => $endToday, 'status' => 'published'],
+                        [],
                         0,
                         PHP_INT_MAX,
-                    ),
-                ),
-            )
+                        [],
+                    ],
+                ],
+            ]
         );
         $this->mockBiz(
             'Course:CourseMemberDao',
-            array(
-                array(
+            [
+                [
                     'functionName' => 'search',
-                    'returnValue' => array(array()),
-                    'withParams' => array(array('courseId' => 2, 'role' => 'teacher'), array(), 0, PHP_INT_MAX),
+                    'returnValue' => [[]],
+                    'withParams' => [['courseId' => 2, 'role' => 'teacher'], [], 0, PHP_INT_MAX, []],
                     'runTimes' => 1,
-                ),
-                array(
+                ],
+                [
                     'functionName' => 'search',
-                    'returnValue' => array(array('id' => 2, 'userId' => 1)),
-                    'withParams' => array(array('courseId' => 3, 'role' => 'teacher'), array(), 0, PHP_INT_MAX),
+                    'returnValue' => [['id' => 2, 'userId' => 1]],
+                    'withParams' => [['courseId' => 3, 'role' => 'teacher'], [], 0, PHP_INT_MAX, []],
                     'runTimes' => 1,
-                ),
-            )
+                ],
+            ]
         );
         $this->mockBiz(
             'Course:CourseService',
-            array(
-                array(
+            [
+                [
                     'functionName' => 'getCourse',
-                    'returnValue' => array('id' => 3, 'status' => 'published', 'title' => 'title', 'courseSetId' => 3),
-                    'withParams' => array(3),
-                ),
-            )
+                    'returnValue' => ['id' => 3, 'status' => 'published', 'title' => 'title', 'courseSetId' => 3],
+                    'withParams' => [3],
+                ],
+            ]
         );
         $this->mockBiz(
             'Course:CourseSetService',
-            array(
-                array(
+            [
+                [
                     'functionName' => 'getCourseSet',
-                    'returnValue' => array('id' => 3, 'status' => 'published', 'title' => 'title'),
-                    'withParams' => array(3),
-                ),
-            )
+                    'returnValue' => ['id' => 3, 'status' => 'published', 'title' => 'title'],
+                    'withParams' => [3],
+                ],
+            ]
         );
         $result = $this->getTaskService()->getTodayLiveCourseNumber();
         $this->assertEquals(1, $result);
@@ -806,13 +994,13 @@ class TaskServiceTest extends BaseTestCase
     {
         $this->mockBiz(
             'System:SettingService',
-            array(
-                array(
+            [
+                [
                     'functionName' => 'get',
-                    'returnValue' => array(),
-                    'withParams' => array('magic'),
-                ),
-            )
+                    'returnValue' => [],
+                    'withParams' => ['magic'],
+                ],
+            ]
         );
 
         $watchTimeSec = $this->getTaskService()->getTimeSec('watch');
@@ -823,13 +1011,13 @@ class TaskServiceTest extends BaseTestCase
 
         $this->mockBiz(
             'System:SettingService',
-            array(
-                array(
+            [
+                [
                     'functionName' => 'get',
-                    'returnValue' => array('watch_time_sec' => 170, 'learn_time_sec' => 70),
-                    'withParams' => array('magic'),
-                ),
-            )
+                    'returnValue' => ['watch_time_sec' => 170, 'learn_time_sec' => 70],
+                    'withParams' => ['magic'],
+                ],
+            ]
         );
 
         $watchTimeSec = $this->getTaskService()->getTimeSec('watch');
@@ -844,51 +1032,63 @@ class TaskServiceTest extends BaseTestCase
      */
     public function testUpdateTasksOptionalByLessonIdException()
     {
-        $this->mockBiz('Course:LessonService', array(
-            array(
+        $this->mockBiz('Course:LessonService', [
+            [
                 'functionName' => 'getLesson',
-                'returnValue' => array('id' => 1, 'type' => 'unit', 'courseId' => 1),
-            ),
-        ));
+                'returnValue' => ['id' => 1, 'type' => 'unit', 'courseId' => 1],
+            ],
+        ]);
 
         $this->getTaskService()->updateTasksOptionalByLessonId(1, 1);
     }
 
     public function testUpdateTasksOptionalByLessonId()
     {
-        $this->mockBiz('Course:LessonService', array(
-            array(
+        $this->mockBiz('Course:LessonService', [
+            [
                 'functionName' => 'getLesson',
-                'returnValue' => array('id' => 1, 'type' => 'lesson', 'courseId' => 1),
-            ),
-        ));
+                'returnValue' => ['id' => 1, 'type' => 'lesson', 'courseId' => 1],
+            ],
+        ]);
 
-        $this->mockBiz('Course:CourseService', array(
-            array(
+        $this->mockBiz('Course:CourseService', [
+            [
                 'functionName' => 'tryManageCourse',
                 'returnValue' => true,
-            ),
-        ));
+            ],
+            [
+                'functionName' => 'updateCourseStatistics',
+                'returnValue' => ['id' => 1, 'taskNum' => 0],
+            ],
+        ]);
 
-        $this->mockBiz('Task:TaskDao', array(
-            array(
+        $this->mockBiz('Task:TaskDao', [
+            [
                 'functionName' => 'findByChapterId',
-                'returnValue' => array(array('id' => 1, 'courseId' => 1, 'title' => 'task name', 'isOptional' => 0, 'copyId' => 0)),
-            ),
-            array(
+                'returnValue' => [['id' => 1, 'courseId' => 1, 'title' => 'task name', 'isOptional' => 0, 'copyId' => 0]],
+            ],
+            [
                 'functionName' => 'update',
-                'returnValue' => array('id' => 1, 'courseId' => 1, 'title' => 'task name', 'isOptional' => 1, 'copyId' => 0),
-            ),
-        ));
+                'returnValue' => ['id' => 1, 'courseId' => 1, 'title' => 'task name', 'isOptional' => 1, 'copyId' => 0],
+            ],
+        ]);
 
         $this->getTaskService()->updateTasksOptionalByLessonId(1, 1);
 
         $this->assertTrue(true);
     }
 
+    public function testFindTasksByCopyIdAndLockedCourseIds()
+    {
+        $this->getTaskService()->createTask($this->mockTask());
+        $tasks = $this->getTaskService()->findTasksByCopyIdAndLockedCourseIds(0, ['2']);
+
+        $this->assertCount(1, $tasks);
+    }
+
     protected function mockSimpleTask($courseId = 1, $courseSetId = 1)
     {
-        $taskFields = array(
+        $taskFields = [
             'title' => 'test task',
             'mediaType' => 'text',
             'mode' => 'lesson',
@@ -896,7 +1096,7 @@ class TaskServiceTest extends BaseTestCase
             'fromCourseSetId' => $courseSetId,
             'finishType' => 'time',
             'status' => 'created',
-        );
+        ];
 
         $lesson = $this->mockChapter($courseId, $taskFields['title']);
         $taskFields['categoryId'] = $lesson['id'];
@@ -906,23 +1106,24 @@ class TaskServiceTest extends BaseTestCase
 
     protected function mockTask()
     {
-        $course = $this->getCourseService()->createCourse(array(
+        $courseSet = $this->getCourseSetService()->createCourseSet(['title' => 'courseSetTitle', 'type' => 'normal']);
+        $course = $this->getCourseService()->createCourse([
             'title' => 'Demo Course',
-            'courseSetId' => 1,
+            'courseSetId' => $courseSet['id'],
             'learnMode' => 'lockMode',
             'expiryMode' => 'forever',
             'courseType' => 'normal',
-        ));
+        ]);
 
-        $taskFields = array(
+        $taskFields = [
             'title' => 'test task',
             'mediaType' => 'text',
             'fromCourseId' => $course['id'],
-            'fromCourseSetId' => 1,
+            'fromCourseSetId' => $courseSet['id'],
             'finishType' => 'time',
             'finishData' => '1',
             'status' => 'published',
-        );
+        ];
 
         $lesson = $this->mockChapter($course['id'], $taskFields['title']);
         $taskFields['categoryId'] = $lesson['id'];
@@ -932,28 +1133,28 @@ class TaskServiceTest extends BaseTestCase
 
     protected function mockChapter($courseId, $title)
     {
-        $fields = array(
+        $fields = [
             'courseId' => $courseId,
             'title' => $title,
             'type' => 'lesson',
             'status' => 'created',
-        );
+        ];
 
         return $this->getCourseService()->createChapter($fields);
     }
 
     protected function createNewCourse($courseSetId)
     {
-        $courses = $this->getCourseService()->findCoursesByCourseSetIds(array($courseSetId));
+        $courses = $this->getCourseService()->findCoursesByCourseSetIds([$courseSetId]);
 
         if (empty($courses)) {
-            $courseFields = array(
+            $courseFields = [
                 'title' => '第一个教学计划',
                 'courseSetId' => 1,
                 'learnMode' => 'lockMode',
                 'expiryDays' => 0,
                 'expiryMode' => 'forever',
-            );
+            ];
 
             $course = $this->getCourseService()->createCourse($courseFields);
         } else {
@@ -967,10 +1168,10 @@ class TaskServiceTest extends BaseTestCase
 
     protected function createNewCourseSet()
     {
-        $courseSetFields = array(
+        $courseSetFields = [
             'title' => '新课程开始！',
             'type' => 'normal',
-        );
+        ];
         $courseSet = $this->getCourseSetService()->createCourseSet($courseSetFields);
 
         $this->assertNotEmpty($courseSet);
@@ -980,13 +1181,13 @@ class TaskServiceTest extends BaseTestCase
 
     private function createNormalUser()
     {
-        $user = array();
+        $user = [];
         $user['email'] = 'normal@user.com';
         $user['nickname'] = 'normal';
-        $user['password'] = 'user';
+        $user['password'] = 'user123';
         $user = $this->getUserService()->register($user);
         $user['currentIp'] = '127.0.0.1';
-        $user['roles'] = array('ROLE_USER');
+        $user['roles'] = ['ROLE_USER'];
 
         return $user;
     }

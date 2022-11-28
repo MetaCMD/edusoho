@@ -1,4 +1,5 @@
 import notify from 'common/notify';
+import FileChooser from './file-chooser';
 
 class BatchCreate {
   constructor(options) {
@@ -6,18 +7,23 @@ class BatchCreate {
     this.uploader = null;
     this.files = [];
     this.$sortable = $('#sortable-list');
+    this.fileIds = [];
     this.init();
   }
 
   init() {
     this.initUploader();
     this.initEvent();
+    const fileChooser = new FileChooser();
   }
 
   initUploader() {
     let $uploader = this.element;
     this.uploader = new UploaderSDK({
       id: $uploader.attr('id'),
+      sdkBaseUri: app.cloudSdkBaseUri,
+      disableDataUpload: app.cloudDisableLogReport,
+      disableSentry: app.cloudDisableLogReport,
       initUrl: $uploader.data('initUrl'),
       finishUrl: $uploader.data('finishUrl'),
       accept: $uploader.data('accept'),
@@ -29,11 +35,12 @@ class BatchCreate {
 
     this.uploader.on('file.finish', (file) => {
       this.files.push(file);
+      this.fileIds.push(file.fileId);
     });
 
     this.uploader.on('error', (error) => {
-      let status = {'F_DUPLICATE':Translator.trans('uploader.file.exist')};
-      if (!error.message){
+      let status = {'F_DUPLICATE': Translator.trans('uploader.file.exist')};
+      if (!error.message) {
         error.message = status[error.error];
       }
       notify('danger', error.message);
@@ -41,38 +48,90 @@ class BatchCreate {
   }
 
   initEvent() {
+    let self = this;
     $('.js-upload-params').on('change', (event) => {
       this.uploader.setProcess(this.getUploadProcess());
     });
 
     $('.js-batch-create-lesson-btn').on('click', (event) => {
-
-      if (!this.files.length) {
+      let $selectLength = $('.js-batch-create-content').find('input[data-role="batch-item"]:checked').length;
+      if (!this.files.length && $selectLength < 1) {
         notify('danger', Translator.trans('uploader.select_one_file'));
         return;
       }
-
       let $btn = $(event.currentTarget);
       $btn.button('loading');
+
       if (!this.validLessonNum($btn)) {
         console.log(this.validLessonNum($btn));
-        return ;
+        return;
       }
 
-      console.log('files', this.files);
-
-      this.files.map((file, index) => {
-        let isLast = false;
-        if (index + 1 == this.files.length) {
-          isLast = true;
-        }
-        console.log('file', file);
-        this.createLesson($btn, file, isLast);
+      $('.js-batch-create-content').find('input[data-role="batch-item"]:checked').map((index, event, array) => {
+        let fileId = $(event).parents('.file-browser-item').data('id');
+        this.fileIds.push(fileId);
       });
+
+      let data = this.validLessonType($btn, this.fileIds);
+      if (!data.status) {
+        for (let i = 0; i < data.invalidFileIds.length; i++) {
+          $('.active').find('#material-table-tr-' + data.invalidFileIds[i]).css('color', 'red');
+        }
+        notify('danger', Translator.trans('uploader.file.unsupported.type'));
+        return;
+      }
+
+      if ($selectLength > 0) {
+        console.log('files', $selectLength);
+        self.submitSelectFile($btn, $selectLength);
+      } else {
+        self.submitUploaderFile($btn);
+      }
+
     });
 
     $('[data-toggle="popover"]').popover({
       html: true,
+    });
+
+    $('.js-batch-create-content').on('click', '[data-role=batch-select]', function () {
+      if ($(this).is(":checked") == true) {
+        $(this).parents('.js-table-list').find('[data-role=batch-item]').prop('checked', true);
+      } else {
+        $(this).parents('.js-table-list').find('[data-role=batch-item]').prop('checked', false);
+      }
+    });
+
+    $('.js-batch-create-content').on('click', '[data-role=batch-item]', function () {
+      if ($(this).is(":checked") != true) {
+        $('.js-batch-create-content').find('[data-role=batch-select]').prop('checked', false);
+      }
+    });
+  }
+
+  submitSelectFile($btn, $selectLength) {
+    $('.js-batch-create-content').find('input[data-role="batch-item"]:checked').map((index, event, array) => {
+      let isLast = false;
+      if (index + 1 == $selectLength) {
+        isLast = true;
+        console.log('isLast', isLast);
+      }
+      let fileId = $(event).parents('.file-browser-item').data('id');
+      console.log('fileId', fileId);
+      this.createLesson($btn, fileId, isLast);
+    });
+  }
+
+  submitUploaderFile($btn) {
+    console.log('files', this.files);
+    this.files.map((file, index) => {
+      let isLast = false;
+      if (index + 1 == this.files.length) {
+        isLast = true;
+      }
+      console.log('file', file);
+
+      this.createLesson($btn, file.fileId, isLast);
     });
   }
 
@@ -108,7 +167,7 @@ class BatchCreate {
       data: {
         number: this.files.length
       },
-      success: function(response) {
+      success: function (response) {
         if (response && response.error) {
           notify('danger', response.error);
           $btn.button('reset');
@@ -120,23 +179,42 @@ class BatchCreate {
     return valid;
   }
 
-  createLesson($btn, file, isLast) {
+  validLessonType($btn, fileIds) {
+    let valid = true;
+    $.ajax({
+      type: 'post',
+      url: $btn.data('typeUrl'),
+      dataType: 'json',
+      async: false,
+      data: {
+        fileIds: fileIds
+      },
+      success: function (response) {
+        $btn.button('reset');
+        self.response = response;
+      }
+    });
+    this.fileIds = [];
+    return self.response;
+  }
+
+  createLesson($btn, fileId, isLast) {
     let self = this;
     $.ajax({
       type: 'post',
       url: $btn.data('url'),
       async: false,
       data: {
-        fileId: file.id
+        fileId: fileId
       },
-      success: function(response) {
+      success: function (response) {
         if (response && response.error) {
           notify('danger', response.error);
         } else {
           self.$sortable.trigger('addItem', response);
         }
       },
-      error: function(response) {
+      error: function (response) {
         console.log('error', response);
         notify('danger', Translator.trans('uploader.status.error'));
       },

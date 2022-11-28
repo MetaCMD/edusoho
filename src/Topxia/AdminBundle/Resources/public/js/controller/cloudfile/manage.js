@@ -25,12 +25,13 @@ define(function(require, exports, module) {
         'click .js-reconvert-btn': 'onClickReconvertBtn',
         'click .js-search-type option': 'onClickSearchTypeBtn',
         'click .js-refresh-btn': 'onClickRefreshBtn',
-        'change .js-process-status-select': 'onClickProcessStatusBtn',
-        'change .js-use-status-select': 'onClickUseStatusBtn',
         'click .js-manage-batch-btn': 'onClickManageBtn',
         'click .js-batch-delete-btn': 'onClickDeleteBatchBtn',
         'click .js-batch-share-btn': 'onClickShareBatchBtn',
         'click .js-batch-tag-btn': 'onClickTagBatchBtn',
+        'click .js-cd-modal': 'codeErrorTip',
+        'click .js-batch-download': 'batchDownload',
+
       },
       setup: function() {
         this.set('model', 'normal');
@@ -39,6 +40,7 @@ define(function(require, exports, module) {
         this._initHeader();
         this._initSelect2();
         this.initTagForm();
+        
       },
       initTagForm: function(event) {
         var $form = $("#tag-form");
@@ -54,6 +56,45 @@ define(function(require, exports, module) {
           required: true,
           display: Translator.trans('admin.cloud_file.tag_required_hint')
         });
+      },
+
+      downloadFile: function(url) {
+        var iframe = document.createElement("iframe");
+        iframe.style.display = "none";
+        iframe.style.height = 0;
+        iframe.src = url;
+        document.body.appendChild(iframe);
+        setTimeout(function(){
+          iframe.remove();
+        }, 5 * 60 * 1000);
+      },
+
+      batchDownload: function() {
+        var self = this;
+        var urls = [];
+        $('#materials-table').find('[data-role=batch-item]:checked').each(function() {
+          var downloadUrl = $(this).closest('.js-tr-item').find('.js-download-btn').data('url');
+          urls.push(downloadUrl);
+        });
+        for (var i = 0;i < urls.length;i++) {
+          var url = urls[i];
+          self.downloadFile(url);   
+        }
+      },
+
+      codeErrorTip: function() {
+        $('#error-modal').on('show.bs.modal', function(event) {
+          var $btn = $(event.relatedTarget);
+          var title = $btn.data('title');
+          var reason = $btn.data('reason');
+          var solution = $btn.data('solution');
+          var status = $btn.data('status');
+          $('.js-error-tip').html(
+           '<div class="mbl clearfix"><span class="pull-left error-label">'+ Translator.trans('material.common_table.file_name') +'：</span><span class="pull-left error-content">' + title + 
+           '</span></div><div class="mbl clearfix"><span class="pull-left error-label">'+ Translator.trans('material.common_table.transcoding') +'：</span><span class="pull-left error-content">' + status + '</span></div><div class="mbl clearfix"><span class="pull-left error-label">' + Translator.trans('material.common_table.error_reason') + '：</span><span class="color-danger pull-left error-content">' + reason +
+           '</span></div><div class="clearfix"><span class="pull-left error-label">'+ Translator.trans('material.common_table.solution_way') +'：</span><span class="color-info pull-left error-content">' +  solution + 
+           '</span></div>')
+        })
       },
       onClickUseTypeNav: function(event) {
         var $target = $(event.currentTarget);
@@ -101,7 +142,7 @@ define(function(require, exports, module) {
         }).done(function(resp) {
           self.element.hide();
           self.element.prev().hide();
-          self.element.parent().prev().html(Translator.trans('material_lib.detail.content_title'));
+          self.element.parent().prev().hide();
           self.element.parent().append(resp);
           new DetailWidget({
             element: '#material-detail',
@@ -109,6 +150,7 @@ define(function(require, exports, module) {
               var $form = $('#materials-form');
               $form.show();
               $form.prev().show();
+              $form.parent().prev().show();
               window.materialWidget.renderTable();
             }
           });
@@ -169,12 +211,6 @@ define(function(require, exports, module) {
         var $target = $(event.currentTarget);
         $("#search-type").val($target.data("value"));
       },
-      onClickProcessStatusBtn: function(event) {
-        this.renderTable();
-      },
-      onClickUseStatusBtn: function(event) {
-        this.renderTable();
-      },
       submitForm: function(event) {
         this.renderTable();
         event.preventDefault();
@@ -198,6 +234,27 @@ define(function(require, exports, module) {
             $('#materials-form').find('[data-role=batch-item]').show();
             $("[data-role=batch-select]").attr("checked", false);
           }
+          $('.js-table-popover').popover({
+            placement: 'top',
+            trigger: 'click',
+            html: true,
+            animation: false,
+            title: '<div class="clearfix">' + Translator.trans('material.common_table.transcoding_intro') + '<a class="pull-right text-sm" href="http://www.qiqiuyu.com/faq/868/detail" target="_blank"> ' + Translator.trans('material.common_table.transcoding_more') + '</a></div>',
+            content: '<div class="text-sm material-table-popover"><p class="mb0"><strong>' + Translator.trans('subtitle.status.error') + '：</strong>' + Translator.trans('material.common_table.fail_error_tip') + '</p><p class="mb0"><strong>' + Translator.trans('material.common_table.fail_not_support') + '：</strong>' + Translator.trans('material.common_table.not_support_error_tip') + '</p></div>'
+            }).on('mouseenter', function () {
+            var _this = this;
+            $(this).popover('show');
+            $('.popover').on('mouseleave', function () {
+                $(_this).popover('hide');
+            });
+          }).on('mouseleave', function () {
+            var _this = this;
+            setTimeout(function () {
+              if (!$('.popover:hover').length) {
+                $(_this).popover("hide");
+              }
+            }, 300);
+          });
         }).fail(function() {
           self._loaded_error();
         });
@@ -470,7 +527,6 @@ define(function(require, exports, module) {
           autoclose: true,
         }).on('changeDate', function() {
           $("#endDate").datetimepicker('setStartDate', $("#startDate").val().substring(0, 16));
-          self.renderTable();
         });
 
         $("#startDate").datetimepicker('setEndDate', $("#endDate").val().substring(0, 16));
@@ -479,7 +535,6 @@ define(function(require, exports, module) {
           autoclose: true,
         }).on('changeDate', function() {
           $("#startDate").datetimepicker('setEndDate', $("#endDate").val().substring(0, 16));
-          self.renderTable();
         });
 
         $("#endDate").datetimepicker('setStartDate', $("#startDate").val().substring(0, 16));

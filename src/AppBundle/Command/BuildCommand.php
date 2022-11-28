@@ -2,6 +2,8 @@
 
 namespace AppBundle\Command;
 
+use AppBundle\Common\BlockToolkit;
+use AppBundle\System;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
@@ -9,8 +11,6 @@ use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Question\ConfirmationQuestion;
 use Symfony\Component\Filesystem\Filesystem;
 use Symfony\Component\Finder\Finder;
-use AppBundle\Common\BlockToolkit;
-use AppBundle\System;
 
 /**
  *  use belong commond
@@ -72,7 +72,7 @@ class BuildCommand extends BaseCommand
         $this->clean();
 
         $this->copyInstallFiles();
-        $this->package();
+        $this->_zipPackage();
         $output->writeln('<info>End build.</info>');
     }
 
@@ -99,10 +99,10 @@ class BuildCommand extends BaseCommand
 
         $command = $this->getApplication()->find('topxia:copy-install-files');
 
-        $input = new ArrayInput(array(
+        $input = new ArrayInput([
             'command' => 'topxia:copy-install-files',
             'version' => System::VERSION,
-        ));
+        ]);
 
         $command->run($input, $this->output);
     }
@@ -113,24 +113,24 @@ class BuildCommand extends BaseCommand
 
         $dumpCommand = $this->getApplication()->find('topxia:dump-init-data');
 
-        $input = new ArrayInput(array(
+        $input = new ArrayInput([
             'command' => 'topxia:dump-init-data',
             'domain' => $this->input->getArgument('domain'),
             'user' => $this->input->getArgument('user'),
             'password' => $this->input->getArgument('password'),
             'database' => $this->input->getArgument('database'),
             'projectPath' => $this->input->getArgument('projectPath'),
-        ));
+        ]);
 
         $returnCode = $dumpCommand->run($input, $this->output);
 
         $this->output->writeln('cut database file');
         $cutCommand = $this->getApplication()->find('topxia:cutfile');
 
-        $input = new ArrayInput(array(
+        $input = new ArrayInput([
             'command' => 'topxia:cutfile',
             'line' => 15,
-        ));
+        ]);
 
         $returnCode = $cutCommand->run($input, $this->output);
 
@@ -146,13 +146,12 @@ class BuildCommand extends BaseCommand
         }
     }
 
-    private function package()
+    private function _zipPackage()
     {
-        $this->output->writeln('build installation package  use: tar zcf edusoho-'.System::VERSION.'tar.gz edusoho/');
+        $this->output->writeln('build installation package  use: zip -r edusoho-'.System::VERSION.'.zip edusoho/');
 
         chdir($this->buildDirectory);
-
-        $command = 'tar zcf edusoho-'.System::VERSION.'.tar.gz edusoho/';
+        $command = 'zip -r edusoho-'.System::VERSION.'.zip edusoho/';
         exec($command);
     }
 
@@ -246,7 +245,7 @@ class BuildCommand extends BaseCommand
         $this->filesystem->copy("{$this->rootDirectory}/src/AppBundle/Command/BuildThemeAppCommand.php", "{$this->distDirectory}/src/AppBundle/Command/BuildThemeAppCommand.php");
         $this->filesystem->copy("{$this->rootDirectory}/src/AppBundle/Command/ThemeRegisterCommand.php", "{$this->distDirectory}/src/AppBundle/Command/ThemeRegisterCommand.php");
         $this->filesystem->copy("{$this->rootDirectory}/src/AppBundle/Command/ThemeCreateCommand.php", "{$this->distDirectory}/src/AppBundle/Command/ThemeCreateCommand.php");
-        $this->filesystem->copy("{$this->rootDirectory}/src/AppBundle/Command/ResetPasswordCommand.php", "{$this->distDirectory}/src/AppBundle/Command/ResetPasswordCommand.php");
+        $this->filesystem->copy("{$this->rootDirectory}/src/AppBundle/Command/UserChangeCommand.php", "{$this->distDirectory}/src/AppBundle/Command/UserChangeCommand.php");
         $this->filesystem->copy("{$this->rootDirectory}/src/AppBundle/Command/Fixtures/PluginAppUpgradeTemplate.php", "{$this->distDirectory}/src/AppBundle/Command/Fixtures/PluginAppUpgradeTemplate.php");
         $this->filesystem->copy("{$this->rootDirectory}/src/AppBundle/Command/InitWebsiteCommand.php", "{$this->distDirectory}/src/AppBundle/Command/InitWebsiteCommand.php");
         $this->filesystem->copy("{$this->rootDirectory}/src/AppBundle/Command/UpgradeScriptCommand.php", "{$this->distDirectory}/src/AppBundle/Command/UpgradeScriptCommand.php");
@@ -257,7 +256,7 @@ class BuildCommand extends BaseCommand
         $finder = new Finder();
         $finder->directories()->in("{$this->distDirectory}/src/");
 
-        $toDeletes = array();
+        $toDeletes = [];
 
         foreach ($finder as $dir) {
             if ('Tests' == $dir->getFilename()) {
@@ -277,10 +276,10 @@ class BuildCommand extends BaseCommand
         $this->filesystem->mirror("{$this->rootDirectory}/vendor", "{$this->distDirectory}/vendor");
 
         $command = $this->getApplication()->find('build:vendor');
-        $input = new ArrayInput(array(
+        $input = new ArrayInput([
             'command' => 'build:vendor',
             'folder' => "{$this->distDirectory}/vendor",
-        ));
+        ]);
         $command->run($input, $this->output);
     }
 
@@ -307,6 +306,7 @@ class BuildCommand extends BaseCommand
         $this->filesystem->mirror("{$this->rootDirectory}/web/themes/default-b", "{$this->distDirectory}/web/themes/default-b");
         $this->filesystem->mirror("{$this->rootDirectory}/web/activities", "{$this->distDirectory}/web/activities");
         $this->filesystem->mirror("{$this->rootDirectory}/web/h5", "{$this->distDirectory}/web/h5");
+        $this->filesystem->mirror("{$this->rootDirectory}/web/translations", "{$this->distDirectory}/web/translations");
 
         $this->filesystem->mirror("{$this->rootDirectory}/web/static-dist/app", "{$this->distDirectory}/web/static-dist/app");
         $this->filesystem->mirror("{$this->rootDirectory}/web/static-dist/autumntheme", "{$this->distDirectory}/web/static-dist/autumntheme");
@@ -337,7 +337,7 @@ class BuildCommand extends BaseCommand
 
         $finder = new Finder();
         $finder->directories()->in("{$this->rootDirectory}/web/bundles")->depth('== 0');
-        $needs = array('translations', 'framework', 'topxiaadmin', 'topxiaweb');
+        $needs = ['translations', 'framework', 'topxiaadmin', 'topxiaweb'];
 
         foreach ($finder as $dir) {
             if (!in_array($dir->getFilename(), $needs)) {

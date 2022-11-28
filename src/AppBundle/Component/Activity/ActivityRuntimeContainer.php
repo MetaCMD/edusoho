@@ -38,7 +38,7 @@ class ActivityRuntimeContainer implements ActivityRuntimeContainerInterface
         $this->container = $container;
         $this->biz = $container->get('biz');
         $this->activitiesDir = $container->getParameter('edusoho.activities_dir');
-        $this->request = $container->get('request');
+        $this->request = $container->get('request_stack')->getMasterRequest();
         $this->activityConfigManager = $container->get('activity_config_manager');
         self::$instance = $this;
     }
@@ -164,5 +164,17 @@ class ActivityRuntimeContainer implements ActivityRuntimeContainerInterface
         $response->setContent($this->container->get('twig')->render($view, $parameters));
 
         return $response;
+    }
+
+    public function setActivitiesDir($path)
+    {
+        if ($this->container->getParameter('kernel.debug')) {
+            $this->activitiesDir = $path;
+            $this->activityConfigManager = new ActivityConfigManager(
+                $this->container->getParameter('kernel.cache_dir'),
+                $path,
+                $this->container->getParameter('kernel.debug')
+            );
+        }
     }
 }

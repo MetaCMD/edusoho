@@ -26,13 +26,11 @@ class UserProvider implements UserProviderInterface
     {
         $user = $this->getUserService()->getUserByLoginField($username);
 
-        if (empty($user)) {
-            throw new UsernameNotFoundException(sprintf('User "%s" not found.', $username));
-        } elseif (isset($user['type']) && 'system' == $user['type']) {
+        if (empty($user) || (isset($user['type']) && 'system' == $user['type'])) {
             throw new UsernameNotFoundException(sprintf('User "%s" not found.', $username));
         }
 
-        $request = $this->container->get('request');
+        $request = $this->container->get('request_stack')->getMasterRequest();
 
         $forbidden = AuthenticationHelper::checkLoginForbidden($request);
         if ('error' == $forbidden['status']) {

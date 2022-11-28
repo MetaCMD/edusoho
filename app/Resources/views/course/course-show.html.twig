@@ -35,28 +35,35 @@
         {{ slot('course.show.content.section', {'course':course}) }}
 
         <section class="es-section">
-          <div class="nav-btn-tab">
-
+          <div class="nav-btn-tab mbs">
+            {% set showReviewTab = course.parentId > 0 %}
 	          {% if member|default(null) %}
 		          {% include 'course/header/nav-tab-for-member.html.twig' %}
 	          {% else %}
 		          {% include 'course/header/nav-tab-for-guest.html.twig' %}
 	          {% endif %}
 
-            {% if app.user.admin|default(false) or isCourseTeacher|default(false) %}
-              <div class="btnbar hidden-xs">
-                <a href="#modal" data-toggle="modal"
-                  data-url="{{ path('announcement_add',{targetType:'course',targetId:course.id}) }}"
-                  class="btn btn-link">
-                  <i class="es-icon es-icon-anonymous-iconfont"></i>
-                  {{ 'course.btn.announcement'|trans }}
-                </a>
-              </div>
-            {% endif %}
+{#            {% if app.user.admin|default(false) or isCourseTeacher|default(false) %}#}
+{#              <div class="btnbar hidden-xs">#}
+{#                <a href="#modal" data-toggle="modal"#}
+{#                  data-url="{{ path('announcement_add',{targetType:'course',targetId:course.id}) }}"#}
+{#                  class="btn btn-link">#}
+{#                  <i class="es-icon es-icon-anonymous-iconfont"></i>#}
+{#                  {{ 'course.btn.announcement'|trans }}#}
+{#                </a>#}
+{#              </div>#}
+{#            {% endif %}#}
 
           </div>
+
+          {% if hasAssistant|default(false) %}
+            <div class="alert alert-warning mbs" style="padding: 5px 5px 5px 10px; border-radius: 5px;">
+              <i class="es-icon es-icon-weixin"></i>{{ 'course.student.add.assistant.tip'|trans }}
+            </div>
+          {% endif %}
+
           {% block detail_content %}
-            {{ render(controller(metas.tabs[tab].content, {request: app.request, course: course, member: member|default(null)})) }}
+            {{ render(controller(metas.tabs[tab].content, {request: app.request, course: course, member: member|default(null), type: tab|default(null)})) }}
           {% endblock %}
         </section>
 
@@ -68,7 +75,7 @@
 
         {{ slot('course.show.sidebar', {'course':course}) }}
 
-        {# 有些widget只有班级计划才显示 #}
+         {#有些widget只有班级计划才显示#}
         {% for key, widget in metas.widgets %}
           {% if (widget.showMode|default('all') == 'classroom' and course.parentId > 0)
           or (widget.showMode|default('all') == 'course' and course.parentId == 0)

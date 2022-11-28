@@ -7,24 +7,26 @@ use ApiBundle\Api\Util\AssetHelper;
 
 class UserFilter extends Filter
 {
-    protected $simpleFields = array(
-        'id', 'nickname', 'title', 'smallAvatar', 'mediumAvatar', 'largeAvatar', 'uuid',
-    );
+    protected $simpleFields = [
+        'id', 'nickname', 'title', 'smallAvatar', 'mediumAvatar', 'largeAvatar', 'uuid', 'destroyed', 'weChatQrCode', 'showable',
+    ];
 
-    protected $publicFields = array(
+    protected $publicFields = [
         'about', 'faceRegistered',
-    );
+    ];
 
-    protected $authenticatedFields = array(
+    protected $authenticatedFields = [
         'email', 'locale', 'uri', 'type', 'roles', 'promotedSeq', 'locked', 'currentIp', 'gender', 'iam', 'city', 'qq', 'signature', 'company',
-        'job', 'school', 'class', 'weibo', 'weixin', 'isQQPublic', 'isWeixinPublic', 'isWeiboPublic', 'following', 'follower', 'verifiedMobile', 'promotedTime', 'lastPasswordFailTime', 'loginTime', 'approvalTime', 'vip', 'token',
-    );
+        'job', 'school', 'class', 'weibo', 'weixin', 'isQQPublic', 'isWeixinPublic', 'isWeiboPublic', 'following', 'follower', 'verifiedMobile',
+        'promotedTime', 'lastPasswordFailTime', 'loginTime', 'approvalTime', 'vip', 'token', 'havePayPassword', 'fingerPrintSetting', 'weChatQrCode',
+    ];
 
     protected $mode = self::SIMPLE_MODE;
 
     protected function simpleFields(&$data)
     {
         $this->transformAvatar($data);
+        $this->destroyedNicknameFilter($data);
     }
 
     protected function publicFields(&$data)
@@ -54,14 +56,20 @@ class UserFilter extends Filter
         $data['smallAvatar'] = AssetHelper::getFurl($data['smallAvatar'], 'avatar.png');
         $data['mediumAvatar'] = AssetHelper::getFurl($data['mediumAvatar'], 'avatar.png');
         $data['largeAvatar'] = AssetHelper::getFurl($data['largeAvatar'], 'avatar.png');
-        $data['avatar'] = array(
+        $data['weChatQrCode'] = !empty($data['weChatQrCode']) ? AssetHelper::getFurl($data['weChatQrCode'], 'avatar.png') : '';
+        $data['avatar'] = [
             'small' => $data['smallAvatar'],
             'middle' => $data['mediumAvatar'],
             'large' => $data['largeAvatar'],
-        );
+        ];
 
         unset($data['smallAvatar']);
         unset($data['mediumAvatar']);
         unset($data['largeAvatar']);
+    }
+
+    protected function destroyedNicknameFilter(&$data)
+    {
+        $data['nickname'] = (1 == $data['destroyed']) ? '帐号已注销' : $data['nickname'];
     }
 }

@@ -2,11 +2,7 @@ import { chapterAnimate } from 'app/common/widget/chapter-animate';
 import AttachmentActions from 'app/js/attachment/widget/attachment-actions';
 import { Browser } from 'common/utils';
 import { buyBtn } from 'app/common/widget/btn-util';
-import PagedCourseLesson from 'app/js/courseset/show/paged-course-lesson';
 
-new PagedCourseLesson();
-
-chapterAnimate();
 initTaskLearnChart();
 triggerMemberExpired();
 remainTime();
@@ -87,7 +83,6 @@ function remainTime() {
     });
   }
 }
-
 // 暂时去掉块状
 // let orderLearnSwiper = null;
 // $('.js-task-show-type').on('click', 'a', function() {

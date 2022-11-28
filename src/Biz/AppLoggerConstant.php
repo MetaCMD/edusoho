@@ -180,10 +180,45 @@ class AppLoggerConstant implements LoggerConstantInterface
      */
     const MOBILE = 'mobile';
 
+    /**
+     *  [$PUSH 推送]
+     *
+     * $var string
+     */
+    const PUSH = 'push';
+
+    /**
+     *  [$question_bank 题库]
+     *
+     * $var string
+     */
+    const QUESTION_BANK = 'question_bank';
+
+    /**
+     *  [$destroy_account_record 注销记录]
+     *
+     * @var string
+     */
+    const DESTROY_ACCOUNT_RECORD = 'destroy_account_record';
+
+    /**
+     *  [$question_bank 题库练习]
+     *
+     * $var string
+     */
+    const ITEM_BANK_EXERCISE = 'item_bank_exercise';
+
+    /**
+     *  [$certificate 证书]
+     *
+     * $var string
+     */
+    const CERTIFICATE = 'certificate';
+
     public function getActions()
     {
-        return array(
-            self::COURSE => array(
+        return [
+            self::COURSE => [
                 'create',
                 'update',
                 'update_picture',
@@ -191,6 +226,8 @@ class AppLoggerConstant implements LoggerConstantInterface
                 'close',
                 'delete',
                 'add_task',
+                'publish_lesson',
+                'unpublish_lesson',
                 'update_task',
                 'delete_task',
                 'task_set_optional',
@@ -232,18 +269,26 @@ class AppLoggerConstant implements LoggerConstantInterface
                 'create_course',
                 'update_course',
                 'delete_course',
+                'copy_course',
                 'publish_course',
                 'close_course',
                 'update_draft',
                 'join_course',
-            ),
+                'exit_course',
+            ],
 
-            self::USER => array(
+            self::PUSH => [
+                'course_thread_create',
+                'course_thread_post_create',
+            ],
+
+            self::USER => [
                 'exportCsv',
                 'add',
                 'update',
                 'send_email_verify',
                 'nickname_change',
+                'delete_user',
                 'password-changed',
                 'pay-password-changed',
                 'password-security-answers',
@@ -261,18 +306,18 @@ class AppLoggerConstant implements LoggerConstantInterface
                 'approved',
                 'approval_fail',
                 'password-reset',
-            ),
-            self::ROLE => array(
+            ],
+            self::ROLE => [
                 'create',
                 'update',
                 'delete',
-            ),
-            self::THREAD => array(
+            ],
+            self::THREAD => [
                 'create',
                 'update',
                 'delete',
-            ),
-            self::SYSTEM => array(
+            ],
+            self::SYSTEM => [
                 'email_send_check',
                 'setting_email_change',
                 'setting_email-verify',
@@ -314,8 +359,8 @@ class AppLoggerConstant implements LoggerConstantInterface
                 'update_settings.xapi',
                 'update_settings.mobile',
                 'update_settings.wap',
-            ),
-            self::CLASSROOM => array(
+            ],
+            self::CLASSROOM => [
                 'create',
                 'update',
                 'delete',
@@ -331,8 +376,9 @@ class AppLoggerConstant implements LoggerConstantInterface
                 'close',
                 'update_head_teacher',
                 'join_classroom',
-            ),
-            self::ARTICLE => array(
+                'exit_classroom',
+            ],
+            self::ARTICLE => [
                 'update_settings',
                 'create',
                 'update',
@@ -343,13 +389,23 @@ class AppLoggerConstant implements LoggerConstantInterface
                 'delete',
                 'publish',
                 'unpublish',
-            ),
+            ],
 
-            self::NOTIFY => array(
+            self::NOTIFY => [
                 'create',
                 'check_fail',
-            ),
-            self::ORDER => array(
+                'wechat_notify_lesson_publish',
+                'wechat_notify_live_play',
+                'wechat_notify_exam_result',
+                'wechat_notify_homework_result',
+                'wechat_notify_pay_success',
+                'wechat_notify_coin_recharge',
+                'wechat_notify_ask_question',
+                'wechat_notify_answer_question',
+                'wechat_notify_course_remind',
+                'wechat_notify_vip_expired',
+            ],
+            self::ORDER => [
                 'pay_result',
                 'andit_refund',
                 'refund_cancel',
@@ -357,44 +413,45 @@ class AppLoggerConstant implements LoggerConstantInterface
                 'course_callback',
                 'classroom_callback',
                 'adjust_price',
-            ),
-            self::CATEGORY => array(
+                'item_bank_exercise_callback',
+            ],
+            self::CATEGORY => [
                 'create',
                 'update',
                 'delete',
-            ),
-            self::CONTENT => array(
+            ],
+            self::CONTENT => [
                 'create',
                 'update',
                 'trash',
                 'delete',
                 'publish',
-            ),
-            self::CRONTAB => array(
+            ],
+            self::CRONTAB => [
                 'job_start',
                 'job_end',
-            ),
-            self::UPLOAD_FILE => array(
+            ],
+            self::UPLOAD_FILE => [
                 'create',
                 'delete',
                 'download',
                 'cloud_convert_callback',
                 'cloud_convert_error',
-            ),
-            self::MARKER => array(
+            ],
+            self::MARKER => [
                 'create',
                 'delete',
                 'mediaId_notExist',
                 'delete_question',
-            ),
-            self::GROUP => array(
+            ],
+            self::GROUP => [
                 'create_thread',
                 'update_thread',
                 'delete_thread',
                 'close_thread',
                 'open_thread',
-            ),
-            self::SMS => array(
+            ],
+            self::SMS => [
                 'sms_forget_password',
                 'sms_user_pay',
                 'sms_forget_pay_password',
@@ -411,27 +468,29 @@ class AppLoggerConstant implements LoggerConstantInterface
                 'sms_classroom_buy_notify',
                 'sms_vip_buy_notify',
                 'sms_coin_buy_notify',
-            ),
-            self::TAG => array(
+                'sms_login',
+                'send_initial_password',
+            ],
+            self::TAG => [
                 'create',
                 'update',
                 'delete',
-            ),
-            self::TAG_GROUP => array(
+            ],
+            self::TAG_GROUP => [
                 'create',
                 'update',
                 'delete',
-            ),
-            self::COIN => array(
+            ],
+            self::COIN => [
                 'update_settings',
                 'add_coin',
                 'deduct_coin',
-            ),
-            self::ANNOUNCEMENT => array(
+            ],
+            self::ANNOUNCEMENT => [
                 'create',
                 'delete',
-            ),
-            self::OPEN_COURSE => array(
+            ],
+            self::OPEN_COURSE => [
                 'create_course',
                 'update_course',
                 'delete_course',
@@ -446,21 +505,50 @@ class AppLoggerConstant implements LoggerConstantInterface
                 'delete_material',
                 'update_teacher',
                 'delete_recommend_course',
-            ),
-            self::LIVE => array(
+            ],
+            self::LIVE => [
                 'update_live_activity',
                 'generate_live_replay',
                 'delete_live_activity',
-            ),
-            self::MOBILE => array(
+            ],
+            self::MOBILE => [
                 'face_login',
-            ),
-        );
+            ],
+            self::QUESTION_BANK => [
+                'create',
+                'delete',
+                'update_teacher',
+                'create_category',
+                'delete_category',
+                'update_category',
+                'delete_question',
+                'delete_attachment',
+            ],
+            self::DESTROY_ACCOUNT_RECORD => [
+                'create',
+                'pass',
+                'reject',
+            ],
+            self::ITEM_BANK_EXERCISE => [
+                'add_student',
+                'remove_student',
+                'delete_exercise',
+                'recommend_exercise',
+                'cancel_recommend_exercise',
+                'publish_exercise',
+                'close_exercise',
+            ],
+            self::CERTIFICATE => [
+                'create_certificate',
+                'auto_issue',
+                'create_template',
+            ],
+        ];
     }
 
     public function getModules()
     {
-        return array(
+        return [
             self::SYSTEM,
             self::COURSE,
             self::USER,
@@ -482,12 +570,16 @@ class AppLoggerConstant implements LoggerConstantInterface
             self::CRONTAB,
             self::LIVE,
             self::MOBILE,
+            self::PUSH,
+            self::QUESTION_BANK,
+            self::DESTROY_ACCOUNT_RECORD,
+            self::ITEM_BANK_EXERCISE,
 //            self::COIN,
 //            self::COUPON,
 //            self::DISCOUNT,
 //            self::MONEY_CARD,
 //            self::QUESTION_PLUS,
 //            self::VIP,
-        );
+        ];
     }
 }

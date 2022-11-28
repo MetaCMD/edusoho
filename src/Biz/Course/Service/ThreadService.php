@@ -9,6 +9,8 @@ interface ThreadService
 {
     public function searchThreads($conditions, $sort, $start, $limit);
 
+    public function fillThreadCounts($conditions, $courseMembers);
+
     public function countThreads($conditions);
 
     public function getThreadByThreadId($threadId);
@@ -50,6 +52,8 @@ interface ThreadService
      * @Log(module="course",action="delete_thread",funcName="getThreadByThreadId")
      */
     public function deleteThread($threadId);
+
+    public function deleteThreadsByUserId($userId);
 
     public function stickThread($courseId, $threadId);
 
@@ -116,6 +120,8 @@ interface ThreadService
      */
     public function getPost($courseId, $id);
 
+    public function getThreadPost($id);
+
     public function createPost($post);
 
     public function postAtNotifyEvent($post, $users);
@@ -129,4 +135,6 @@ interface ThreadService
     public function findThreadIds($conditions);
 
     public function findPostThreadIds($conditions);
+
+    public function countThreadsGroupedByCourseId($conditions);
 }

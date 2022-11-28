@@ -2,14 +2,15 @@
 
 namespace Biz\Course\Copy;
 
+use AppBundle\Common\ArrayToolkit;
 use Biz\AbstractCopy;
 use Biz\Course\Dao\CourseDao;
 use Biz\Course\Dao\CourseSetDao;
 use Biz\Course\Service\CourseSetService;
-use Biz\Question\Dao\QuestionDao;
+use Biz\Goods\Mediator\CourseSpecsMediator;
+use Biz\MultiClass\Dao\MultiClassDao;
 use Biz\Task\Dao\TaskDao;
 use Biz\Testpaper\Dao\TestpaperDao;
-use Codeages\Biz\Framework\Util\ArrayToolkit;
 
 class CourseSetCoursesCopy extends AbstractCopy
 {
@@ -27,7 +28,7 @@ class CourseSetCoursesCopy extends AbstractCopy
         $courses = $this->getCourseDao()->findCoursesByCourseSetIdAndStatus($courseSet['id'], null);
 
         $defaultCourseId = 0;
-        $newCourses = array();
+        $newCourses = [];
 
         foreach ($courses as $originCourse) {
             $newCourse = $this->partsFields($originCourse);
@@ -36,10 +37,14 @@ class CourseSetCoursesCopy extends AbstractCopy
             $newCourse['creator'] = $user['id'];
             $newCourse['parentId'] = $originCourse['id'];
             $newCourse['price'] = $originCourse['originPrice'];
+            $newCourse['seq'] = $originCourse['seq'];
+            $newCourse['status'] = 'draft';
             $newCourse = $this->getCourseDao()->create($newCourse);
-
+            $this->getCourseSpecsMediator()->onCreate($newCourse);
+            $this->getCourseSpecsMediator()->onUpdateNormalData($newCourse);
             $newCourses[] = $newCourse;
-            if ('default' == $newCourse['courseType']) {
+
+            if ($originCourse['id'] == $courseSet['defaultCourseId']) {
                 $defaultCourseId = $newCourse['id'];
             }
 
@@ -50,101 +55,15 @@ class CourseSetCoursesCopy extends AbstractCopy
 
         // 原课程defaultCourse被删除时，复制后defaultCourseId为课程下第一个计划的ID
         $defaultCourseId = empty($defaultCourseId) ? $newCourses[0]['id'] : $defaultCourseId;
-        $this->getCourseSetDao()->update($newCourseSet['id'], array('defaultCourseId' => $defaultCourseId));
+        $this->getCourseSetDao()->update($newCourseSet['id'], ['defaultCourseId' => $defaultCourseId]);
 
         $this->getCourseSetService()->updateCourseSetMinAndMaxPublishedCoursePrice($newCourseSet['id']);
 
-        $this->updateQuestionsCourseId($newCourseSet['id']);
-        $this->updateQuestionsLessonId($newCourseSet['id']);
-        $this->updateExerciseRange($newCourseSet['id']);
         $this->resetCopyId($newCourseSet['id']);
-    }
 
-    protected function updateQuestionsCourseId($courseSetId)
-    {
-        $questions = $this->getQuestionDao()->findQuestionsByCourseSetId($courseSetId);
-        $courseIds = ArrayToolkit::column($questions, 'courseId');
-
-        $conditions = array(
-            'parentIds' => $courseIds,
-            'fromCourseSetId' => $courseSetId,
-        );
-        $parentCourses = $this->getCourseDao()->search($conditions, array(), 0, PHP_INT_MAX);
-        $parentCourses = ArrayToolkit::index($parentCourses, 'parentId');
-
-        foreach ($questions as $question) {
-            if (empty($question['courseId'])) {
-                continue;
-            }
-
-            $fields = array(
-                'courseId' => empty($parentCourses[$question['courseId']]) ? 0 : $parentCourses[$question['courseId']]['id'],
-            );
-
-            $this->getQuestionDao()->update($question['id'], $fields);
-        }
-    }
-
-    protected function updateQuestionsLessonId($courseSetId)
-    {
-        $questions = $this->getQuestionDao()->findQuestionsByCourseSetId($courseSetId);
-        $taskIds = ArrayToolkit::column($questions, 'lessonId');
-
-        $conditions = array(
-            'copyIds' => $taskIds,
-            'fromCourseSetId' => $courseSetId,
-        );
-        $parentTasks = $this->getTaskDao()->search($conditions, array(), 0, PHP_INT_MAX);
-        $parentTasks = ArrayToolkit::index($parentTasks, 'copyId');
-
-        foreach ($questions as $question) {
-            if (empty($question['lessonId'])) {
-                continue;
-            }
-
-            $fields = array(
-                'lessonId' => empty($parentTasks[$question['lessonId']]) ? 0 : $parentTasks[$question['lessonId']]['id'],
-            );
-
-            $this->getQuestionDao()->update($question['id'], $fields);
-        }
-    }
-
-    protected function updateExerciseRange($courseSetId)
-    {
-        $conditions = array(
-            'courseSetId' => $courseSetId,
-            'type' => 'exercise',
-        );
-
-        $exercises = $this->getTestpaperDao()->search($conditions, array(), 0, PHP_INT_MAX);
-
-        $taskIds = ArrayToolkit::column($exercises, 'lessonId');
-        $conditions = array(
-            'copyIds' => $taskIds,
-            'fromCourseSetId' => $courseSetId,
-        );
-        $copyTasks = $this->getTaskDao()->search($conditions, array(), 0, PHP_INT_MAX);
-        $copyTasks = ArrayToolkit::index($copyTasks, 'copyId');
-
-        foreach ($exercises as $exercise) {
-            if (empty($exercise['lessonId'])) {
-                continue;
-            }
-
-            $metas = $exercise['metas'];
-            $range = $metas['range'];
-            $taskId = empty($range['lessonId']) ? 0 : $range['lessonId'];
-
-            $range['lessonId'] = empty($copyTasks[$taskId]['id']) ? 0 : $copyTasks[$taskId]['id'];
-            $metas['range'] = $range;
-
-            $fields = array(
-                'lessonId' => 0,
-                'metas' => $metas,
-            );
-
-            $this->getTestpaperDao()->update($exercise['id'], $fields);
+        if (!empty($options['newMultiClass'])) {
+            $newMultiClass = $options['newMultiClass'];
+            $this->getMultiClassDao()->update($newMultiClass['id'], ['courseId' => $defaultCourseId]);
         }
     }
 
@@ -165,7 +84,6 @@ class CourseSetCoursesCopy extends AbstractCopy
         $connection->exec("UPDATE `course_task` SET copyId = 0 WHERE fromCourseSetId = {$newCourseSetId}");
         $connection->exec("UPDATE `activity` SET copyId = 0 where fromCourseSetId = {$newCourseSetId}");
         $connection->exec("UPDATE `testpaper_v8` SET copyId = 0 WHERE courseSetId = {$newCourseSetId}");
-        $connection->exec("UPDATE `question` SET copyId = 0 WHERE courseSetId = {$newCourseSetId}");
     }
 
     protected function doChildrenProcess($source, $options)
@@ -180,7 +98,7 @@ class CourseSetCoursesCopy extends AbstractCopy
 
     protected function getFields()
     {
-        return array(
+        return [
             'title',
             'learnMode',
             'expiryMode',
@@ -193,7 +111,6 @@ class CourseSetCoursesCopy extends AbstractCopy
             'maxStudentNum',
             //'isFree',
             'price',
-            // 'vipLevelId',
             'buyable',
             'tryLookable',
             'tryLookLength',
@@ -240,7 +157,8 @@ class CourseSetCoursesCopy extends AbstractCopy
             'lessonNum',
             'publishLessonNum',
             'subtitle',
-        );
+            'taskDisplay',
+        ];
     }
 
     /**
@@ -268,14 +186,6 @@ class CourseSetCoursesCopy extends AbstractCopy
     }
 
     /**
-     * @return QuestionDao
-     */
-    protected function getQuestionDao()
-    {
-        return $this->biz->dao('Question:QuestionDao');
-    }
-
-    /**
      * @return TestpaperDao
      */
     protected function getTestpaperDao()
@@ -289,5 +199,21 @@ class CourseSetCoursesCopy extends AbstractCopy
     protected function getCourseSetService()
     {
         return $this->biz->service('Course:CourseSetService');
+    }
+
+    /**
+     * @return CourseSpecsMediator
+     */
+    protected function getCourseSpecsMediator()
+    {
+        return $this->biz['specs.mediator.course'];
+    }
+
+    /**
+     * @return MultiClassDao
+     */
+    private function getMultiClassDao()
+    {
+        return $this->biz->dao('MultiClass:MultiClassDao');
     }
 }

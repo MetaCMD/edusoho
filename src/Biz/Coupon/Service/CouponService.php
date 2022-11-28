@@ -14,6 +14,8 @@ interface CouponService
 
     public function updateCoupon($couponId, $fields);
 
+    public function batchUpdateCoupons(array $userCoupons);
+
     public function findCouponsByBatchId($batchId, $start, $limit);
 
     public function findCouponsByIds(array $ids);
@@ -52,4 +54,6 @@ interface CouponService
     public function generateDistributionCoupon($userId, $rate, $expireDay);
 
     public function generateMarketingCoupon($userId, $rate, $expireDay);
+
+    public function getCouponTargetByTargetTypeAndTargetId($targetType, $targetId);
 }

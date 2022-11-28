@@ -16,6 +16,7 @@ parameters:
         - '/crontab'
         - '/passport/notify'
         - '/oauth/v2/token'
+        - '/oauth/token'
         - '/login/oauth/access_token'
         - '/uploader/upload_callback'
         - '/uploader/process_callback'
@@ -40,3 +41,9 @@ parameters:
         - '/pay/center/pay/llpay/return'
         - '/pay/center/pay/llpay/notify'
         - '/cashier/wechat/notify'
+        - '/agreement/course/purchase'
+        - 'disclaimers'
+
+    qrcode_protocol_whitelist_default:
+        - 'weixin'
+        - 'alipays'
